@@ -1,7 +1,9 @@
 import { Link, NavLink } from "react-router-dom"
+import { useState } from "react"
 import ThemeToggle from "./ui/toggle"
 
 function Navbar() {
+  const [open, setOpen] = useState(false)
   return (
     <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-6xl">
       <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80
@@ -48,9 +50,44 @@ function Navbar() {
         </div>
 
         {/* MOBILE */}
-        <div className="md:hidden flex items-center gap-3">
-          <ThemeToggle />
-          <button className="text-2xl text-slate-800 dark:text-white">☰</button>
+        <div className="md:hidden relative">
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <button
+              aria-label="Open menu"
+              onClick={() => setOpen((v) => !v)}
+              className="text-2xl text-slate-800 dark:text-white"
+            >
+              ☰
+            </button>
+          </div>
+          {open && (
+            <div className="absolute right-0 mt-3 w-48 rounded-xl border bg-white dark:bg-slate-900 shadow-xl p-3">
+              <nav className="grid gap-2">
+                <NavLink
+                  to="/"
+                  onClick={() => setOpen(false)}
+                  className="px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Home
+                </NavLink>
+                <NavLink
+                  to="/login"
+                  onClick={() => setOpen(false)}
+                  className="px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Login
+                </NavLink>
+                <NavLink
+                  to="/register"
+                  onClick={() => setOpen(false)}
+                  className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  Get Started
+                </NavLink>
+              </nav>
+            </div>
+          )}
         </div>
 
       </div>

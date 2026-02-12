@@ -12,8 +12,10 @@ import "../utils/leafletIconFix"
 
 function Dashboard() {
   const [active, setActive] = useState("have")
+  const [menuOpen, setMenuOpen] = useState(false)
   const [accepting, setAccepting] = useState(null)
   const [offers, setOffers] = useState([])
+  const [loadingOffers, setLoadingOffers] = useState(true)
   const [currentLoc, setCurrentLoc] = useState(null)
   const [passengerLoc, setPassengerLoc] = useState(null)
   const [passengerForm, setPassengerForm] = useState({
@@ -26,10 +28,15 @@ function Dashboard() {
   useEffect(() => {
     (async () => {
       try {
+        setLoadingOffers(true)
         const res = await fetch("http://localhost:8000/ride-offers")
         const data = await res.json()
         setOffers(data?.offers || [])
-      } catch (e) { console.error(e) }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoadingOffers(false)
+      }
     })()
   }, [])
 
@@ -77,29 +84,64 @@ function Dashboard() {
   return (
     <div className="min-h-screen flex bg-slate-100 dark:bg-slate-950">
 
-      {/* SIDEBAR */}
-      <aside className="w-64 bg-white dark:bg-slate-900 border-r p-6">
-        <h2 className="text-2xl font-extrabold mb-10 text-slate-900 dark:text-white">
-          Kozhi<span className="text-blue-600">Go</span>
-        </h2>
+      <button
+        className="fixed left-4 top-4 z-50 p-3 rounded-xl bg-white dark:bg-slate-800 border shadow hover:bg-slate-50 dark:hover:bg-slate-700"
+        onClick={() => setMenuOpen(true)}
+        aria-label="Open menu"
+      >
+        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white mb-1"></span>
+        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white mb-1"></span>
+        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white"></span>
+      </button>
 
-        <button
-          onClick={() => setActive("have")}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition mb-3
-          ${active === "have"
-            ? "bg-blue-600 text-white shadow"
-            : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-        >
-          🚕 Book a Ride
-        </button>
-
-        <button
-          onClick={() => navigate("/giveride")}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
-          🚲 Give a Ride
-        </button>
-      </aside>
+      {menuOpen && (
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 px-6 pt-16 pb-6">
+            <h2 className="text-2xl font-extrabold mb-6 text-white">
+              Menu
+            </h2>
+            <div className="space-y-0 divide-y divide-slate-700">
+              <button
+                onClick={() => { setActive("have"); setMenuOpen(false) }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                PASSENGER
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); navigate("/giveride") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                RIDER
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); toast.success("History coming soon") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                HISTORY
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); toast.success("Contact coming soon") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                CONTACT
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); toast.success("Profile coming soon") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                PROFILE
+              </button>
+              <button
+                onClick={() => setMenuOpen(false)}
+                className="w-full text-left mt-4 px-4 py-3 rounded-xl font-medium transition bg-slate-800 text-white"
+              >
+                Close
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* MAIN */}
       <main className="flex-1 p-8">
@@ -109,77 +151,95 @@ function Dashboard() {
               <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-white">
                 Available Rides
               </h3>
-              {offers.length === 0 && (
+              {loadingOffers && (
+                <ul className="space-y-4 animate-pulse">
+                  {[...Array(3)].map((_, i) => (
+                    <li key={i} className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2">
+                          <div className="h-4 w-40 bg-slate-300 dark:bg-slate-700 rounded" />
+                          <div className="h-3 w-28 bg-slate-300 dark:bg-slate-700 rounded" />
+                          <div className="h-3 w-24 bg-slate-300 dark:bg-slate-700 rounded" />
+                        </div>
+                        <div className="h-8 w-24 bg-slate-300 dark:bg-slate-700 rounded" />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!loadingOffers && offers.length === 0 && (
                 <div className="text-sm text-slate-500">No rides available</div>
               )}
-              <ul className="space-y-4">
-                {offers.map((o) => (
-                  <li key={o.id} className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-900 dark:text-white">{o.riderName || "-"}</p>
-                        <p className="text-sm text-slate-500">{o.scooterNumber} • {o.collegeName}</p>
-                        <p className="text-sm text-slate-500">📞 {o.phone}</p>
-                        <p className="text-xs text-slate-400">
-                          Pickup: {typeof o.pickupLat === "number" && typeof o.pickupLng === "number"
-                            ? (placeNames[`${o.pickupLat},${o.pickupLng}`] || `${o.pickupLat.toFixed(5)}, ${o.pickupLng.toFixed(5)}`)
-                            : "-"}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          Current: {typeof o.currentLat === "number" && typeof o.currentLng === "number"
-                            ? (placeNames[`${o.currentLat},${o.currentLng}`] || `${o.currentLat.toFixed(5)}, ${o.currentLng.toFixed(5)}`)
-                            : "-"}
-                        </p>
+              {!loadingOffers && (
+                <ul className="space-y-4">
+                  {offers.map((o) => (
+                    <li key={o.id} className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-900 dark:text-white">{o.riderName || "-"}</p>
+                          <p className="text-sm text-slate-500">{o.scooterNumber} • {o.collegeName}</p>
+                          <p className="text-sm text-slate-500">📞 {o.phone}</p>
+                          <p className="text-xs text-slate-400">
+                            Pickup: {typeof o.pickupLat === "number" && typeof o.pickupLng === "number"
+                              ? (placeNames[`${o.pickupLat},${o.pickupLng}`] || `${o.pickupLat.toFixed(5)}, ${o.pickupLng.toFixed(5)}`)
+                              : "-"}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Current: {typeof o.currentLat === "number" && typeof o.currentLng === "number"
+                              ? (placeNames[`${o.currentLat},${o.currentLng}`] || `${o.currentLat.toFixed(5)}, ${o.currentLng.toFixed(5)}`)
+                              : "-"}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-xs px-3 py-1 rounded-full font-medium
+                            ${(o.status || "pending") === "active"
+                              ? "bg-green-600 text-white"
+                              : (o.status || "pending") === "rejected"
+                              ? "bg-red-600 text-white"
+                              : "bg-yellow-500 text-white"}`}
+                        >
+                          {o.status || "pending"}
+                        </span>
                       </div>
-                      <span
-                        className={`text-xs px-3 py-1 rounded-full font-medium
-                          ${(o.status || "pending") === "active"
-                            ? "bg-green-600 text-white"
-                            : (o.status || "pending") === "rejected"
-                            ? "bg-red-600 text-white"
-                            : "bg-yellow-500 text-white"}`}
-                      >
-                        {o.status || "pending"}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        className={`px-3 py-1 text-xs rounded-lg ${o.status === "pending" ? "bg-green-600 hover:bg-green-700 text-white" : "bg-slate-400 text-slate-800 cursor-not-allowed"}`}
-                        disabled={o.status !== "pending"}
-                        onClick={() => {
-                          if (o.status !== "pending") {
-                            toast.error("This ride status is finalized")
-                            return
-                          }
-                          setAccepting(o.id)
-                          setPassengerForm({ passengerName: "", passengerPhone: "" })
-                          setPassengerLoc(currentLoc)
-                        }}
-                      >
-                        Accept
-                      </button>
-                      <button
-                        className={`px-3 py-1 text-xs rounded-lg ${o.status === "pending" ? "bg-red-600 hover:bg-red-700 text-white" : "bg-slate-400 text-slate-800 cursor-not-allowed"}`}
-                        disabled={o.status !== "pending"}
-                        onClick={async () => {
-                          if (o.status !== "pending") {
-                            toast.error("This ride status is finalized")
-                            return
-                          }
-                          await fetch(`http://localhost:8000/ride-offers/${o.id}/reject`, { method: "POST" })
-                          const res = await fetch("http://localhost:8000/ride-offers")
-                          const data = await res.json()
-                          setOffers(data?.offers || [])
-                          toast.success("Ride rejected")
-                        }}
-                      >
-                        Reject
-                      </button>
-                      
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          className={`px-3 py-1 text-xs rounded-lg ${o.status === "pending" ? "bg-green-600 hover:bg-green-700 text-white" : "bg-slate-400 text-slate-800 cursor-not-allowed"}`}
+                          disabled={o.status !== "pending"}
+                          onClick={() => {
+                            if (o.status !== "pending") {
+                              toast.error("This ride status is finalized")
+                              return
+                            }
+                            setAccepting(o.id)
+                            setPassengerForm({ passengerName: "", passengerPhone: "" })
+                            setPassengerLoc(currentLoc)
+                          }}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          className={`px-3 py-1 text-xs rounded-lg ${o.status === "pending" ? "bg-red-600 hover:bg-red-700 text-white" : "bg-slate-400 text-slate-800 cursor-not-allowed"}`}
+                          disabled={o.status !== "pending"}
+                          onClick={async () => {
+                            if (o.status !== "pending") {
+                              toast.error("This ride status is finalized")
+                              return
+                            }
+                            await fetch(`http://localhost:8000/ride-offers/${o.id}/reject`, { method: "POST" })
+                            const res = await fetch("http://localhost:8000/ride-offers")
+                            const data = await res.json()
+                            setOffers(data?.offers || [])
+                            toast.success("Ride rejected")
+                          }}
+                        >
+                          Reject
+                        </button>
+                        
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border p-6">
               <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-white">

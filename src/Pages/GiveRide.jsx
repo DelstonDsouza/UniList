@@ -9,13 +9,12 @@ import {
 } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import "../utils/leafletIconFix"
+ 
 
 function GiveRide() {
   const navigate = useNavigate()
   const [offers, setOffers] = useState([])
-  const [isApproved, setIsApproved] = useState(false)
-  const [isVerified, setIsVerified] = useState(false)
-  const [approvalChecked, setApprovalChecked] = useState(false)
+ 
   const [offerForm, setOfferForm] = useState({
     riderName: "",
     scooterNumber: "",
@@ -38,35 +37,7 @@ function GiveRide() {
     )
   }, [])
 
-  // check rider approval status for current user
-  useEffect(() => {
-    let mounted = true
-    const check = async () => {
-      try {
-        const user = (await import("../firebase")).auth.currentUser
-        const token = user ? await user.getIdToken() : null
-        if (!token) {
-          if (mounted) { setIsApproved(false); setApprovalChecked(true) }
-          return
-        }
-        const API = "http://localhost:8001"
-        const res = await fetch(`${API}/rider-approval/mine`, { headers: { Authorization: `Bearer ${token}` } })
-        const data = await res.json()
-        const approval = data?.approval || null
-        const resUser = await fetch(`${API}/users/me`, { headers: { Authorization: `Bearer ${token}` } })
-        const dataUser = await resUser.json()
-        if (mounted) {
-          setIsApproved(approval && approval.status === "approved")
-          setIsVerified(!!dataUser?.user?.verified)
-          setApprovalChecked(true)
-        }
-      } catch {
-        if (mounted) { setIsApproved(false); setIsVerified(false); setApprovalChecked(true) }
-      }
-    }
-    check()
-    return () => { mounted = false }
-  }, [])
+ 
 
   useEffect(() => {
     let mounted = true
@@ -123,14 +94,6 @@ function GiveRide() {
   }
 
   const postOffer = async () => {
-    if (!approvalChecked) {
-      toast.error("Checking approval status — try again shortly")
-      return
-    }
-    if (!isApproved || !isVerified) {
-      toast.error("Only approved and verified riders can post rides. Submit approval and wait for admin verification.")
-      return
-    }
     if (!offerForm.riderName || !offerForm.scooterNumber || !offerForm.phone || !offerForm.collegeName || !pickupPoint) {
       toast.error("Fill all fields and pick pickup point")
       return
@@ -173,13 +136,7 @@ function GiveRide() {
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section className="bg-white dark:bg-slate-900 rounded-2xl border p-6">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">Post a Ride</h2>
-          {!approvalChecked ? (
-            <div className="mb-3 text-sm text-slate-500">Checking rider approval status...</div>
-          ) : !isApproved ? (
-            <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-yellow-100 text-yellow-900">
-              You are not an approved rider yet — <a className="underline text-blue-600" href="/rider-approval">submit approval</a> and wait for admin acceptance.
-            </div>
-          ) : null}
+ 
           {hasBlockingRide && (
             <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-yellow-100 text-yellow-900">
               You have an active/ongoing ride. Complete it before posting a new one.

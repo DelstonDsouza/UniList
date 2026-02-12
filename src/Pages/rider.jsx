@@ -1,6 +1,5 @@
 import { useState } from "react"
-import { signInWithEmailAndPassword } from "firebase/auth"
-import { auth } from "../firebase"
+import { API_BASE, setToken } from "../lib/api"
 import { Link, useNavigate } from "react-router-dom"
 
 function Login() {
@@ -14,7 +13,14 @@ function Login() {
     setLoading(true)
 
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      const res = await fetch(`${API_BASE}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.token) throw new Error(data?.detail || "Login failed")
+      setToken(data.token)
       navigate("/giveride")
     } catch (err) {
       alert(err.message)

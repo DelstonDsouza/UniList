@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { FaEye, FaEyeSlash } from "react-icons/fa"
-import { createUserWithEmailAndPassword } from "firebase/auth"
-import { auth } from "../firebase"
+import { apiFetch } from "../lib/api"
 import toast from "react-hot-toast"
 import { useNavigate } from "react-router-dom"
 
@@ -51,17 +50,7 @@ function Register() {
     try {
       setLoading(true)
 
-      // 1️⃣ Firebase Auth
-      const userCred = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password
-      )
-
-      // 2️⃣ Firebase token
-      const token = await userCred.user.getIdToken()
-
-      // 3️⃣ FormData
+      // 1️⃣ FormData
       const data = new FormData()
       data.append("firstName", formData.firstName)
       data.append("lastName", formData.lastName)
@@ -69,22 +58,14 @@ function Register() {
       data.append("phone", formData.phone)
       data.append("gender", formData.gender)
       data.append("universityId", formData.universityId)
+      data.append("password", formData.password)
       data.append("collegeIdPhoto", formData.collegeIdPhoto)
 
-      // 4️⃣ Backend request
-      const res = await fetch("http://localhost:8000/register", {
+      // 2️⃣ Backend request
+      await apiFetch("/register", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: data,
       })
-
-      const result = await res.json()
-
-      if (!res.ok) {
-        throw new Error(result?.detail || "Registration failed")
-      }
 
       toast.success("Registration successful 🎉", { id: toastId })
 
