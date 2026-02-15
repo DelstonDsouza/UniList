@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { API_BASE, setToken } from "../lib/api"
+import { API_BASE, setToken, clearToken } from "../lib/api"
 import { Link, useNavigate } from "react-router-dom"
 
 function Login() {
@@ -21,8 +21,18 @@ function Login() {
       const data = await res.json()
       if (!res.ok || !data?.token) throw new Error(data?.detail || "Login failed")
       setToken(data.token)
-      navigate("/giveride")
+      const meRes = await fetch(`${API_BASE}/users/me`, {
+        headers: { Authorization: `Bearer ${data.token}` }
+      })
+      if (!meRes.ok) throw new Error("Failed to fetch user")
+      const me = await meRes.json()
+      if (!me?.user) throw new Error("Login failed: user not found")
+      localStorage.setItem("user", JSON.stringify(me.user))
+      localStorage.removeItem("isRider")
+      localStorage.removeItem("riderProfile")
+      navigate("/dashboard")
     } catch (err) {
+      clearToken()
       alert(err.message)
     }
 

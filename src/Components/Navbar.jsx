@@ -1,9 +1,19 @@
-import { Link, NavLink } from "react-router-dom"
+import { Link, NavLink, useNavigate } from "react-router-dom"
 import { useState } from "react"
+import { getToken, clearToken } from "../lib/api"
 import ThemeToggle from "./ui/toggle"
 
 function Navbar() {
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const authed = !!getToken()
+  const logout = () => {
+    clearToken()
+    localStorage.removeItem("user")
+    localStorage.removeItem("isRider")
+    localStorage.removeItem("riderProfile")
+    navigate("/login")
+  }
   return (
     <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-6xl">
       <div className="backdrop-blur-md bg-white/80 dark:bg-slate-900/80
@@ -31,19 +41,31 @@ function Navbar() {
             Home
           </NavLink>
 
-          <NavLink
-            to="/login"
-            className="text-slate-700 dark:text-slate-300 hover:text-blue-600 font-medium"
-          >
-            Login
-          </NavLink>
+          {!authed && (
+            <NavLink
+              to="/login"
+              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 font-medium"
+            >
+              Login
+            </NavLink>
+          )}
 
-          <NavLink
-            to="/register"
-            className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition"
-          >
-            Get Started
-          </NavLink>
+          {!authed && (
+            <NavLink
+              to="/register"
+              className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition"
+            >
+              Get Started
+            </NavLink>
+          )}
+          {authed && (
+            <button
+              onClick={logout}
+              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 font-medium"
+            >
+              Logout
+            </button>
+          )}
 
           {/* THEME TOGGLE */}
           <ThemeToggle />
@@ -71,20 +93,32 @@ function Navbar() {
                 >
                   Home
                 </NavLink>
-                <NavLink
-                  to="/login"
-                  onClick={() => setOpen(false)}
-                  className="px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  Login
-                </NavLink>
-                <NavLink
-                  to="/register"
-                  onClick={() => setOpen(false)}
-                  className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                >
-                  Get Started
-                </NavLink>
+                {!authed && (
+                  <NavLink
+                    to="/login"
+                    onClick={() => setOpen(false)}
+                    className="px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Login
+                  </NavLink>
+                )}
+                {!authed && (
+                  <NavLink
+                    to="/register"
+                    onClick={() => setOpen(false)}
+                    className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Get Started
+                  </NavLink>
+                )}
+                {authed && (
+                  <button
+                    onClick={() => { setOpen(false); logout() }}
+                    className="px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-left"
+                  >
+                    Logout
+                  </button>
+                )}
               </nav>
             </div>
           )}

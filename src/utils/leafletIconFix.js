@@ -1,13 +1,13 @@
-
 import L from "leaflet"
-import markerIcon from "./motorcycle.png"
-import markerShadow from "./person.png"
+import riderIconImg from "./motorcycle.png"
+import passengerIconImg from "./person.png"
 
-delete L.Icon.Default.prototype._getIconUrl
-
-L.Icon.Default.mergeOptions({
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+export const riderIcon = new L.Icon({
+  iconUrl: riderIconImg,
+  iconSize: [40, 40],
 })
 
-
+export const passengerIcon = new L.Icon({
+  iconUrl: passengerIconImg,
+  iconSize: [35, 35],
+})

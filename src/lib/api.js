@@ -5,7 +5,12 @@ export const clearToken = () => localStorage.removeItem("token")
 
 export async function apiFetch(path, options = {}) {
   const url = `${API_BASE}${path}`
-  const res = await fetch(url, options)
+  const token = getToken()
+  const headers = new Headers(options.headers || {})
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`)
+  }
+  const res = await fetch(url, { ...options, headers })
   const ct = res.headers.get("content-type") || ""
   let data = null
   if (ct.includes("application/json")) {

@@ -9,6 +9,7 @@ import {
 } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import "../utils/leafletIconFix"
+import { apiFetch } from "../lib/api"
 
 function Dashboard() {
   const [active, setActive] = useState("have")
@@ -24,13 +25,16 @@ function Dashboard() {
   })
   const [placeNames, setPlaceNames] = useState({})
   const navigate = useNavigate()
+  const user = (() => {
+    const raw = localStorage.getItem("user")
+    return raw ? JSON.parse(raw) : null
+  })()
 
   useEffect(() => {
     (async () => {
       try {
         setLoadingOffers(true)
-        const res = await fetch("http://localhost:8000/ride-offers")
-        const data = await res.json()
+        const data = await apiFetch("/ride-offers")
         setOffers(data?.offers || [])
       } catch (e) {
         console.error(e)
@@ -86,7 +90,7 @@ function Dashboard() {
 
       <button
         className="fixed left-4 top-4 z-50 p-3 rounded-xl bg-white dark:bg-slate-800 border shadow hover:bg-slate-50 dark:hover:bg-slate-700"
-        onClick={() => setMenuOpen(true)}
+        onClick={() => setMenuOpen((v) => !v)}
         aria-label="Open menu"
       >
         <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white mb-1"></span>
@@ -109,7 +113,13 @@ function Dashboard() {
                 PASSENGER
               </button>
               <button
-                onClick={() => { setMenuOpen(false); navigate("/giveride") }}
+                onClick={() => {
+                  setMenuOpen(false)
+                  const raw = localStorage.getItem("user")
+                  const u = raw ? JSON.parse(raw) : null
+                  const has = !!u && !!u.isRider
+                  navigate(has ? "/giveride" : "/become-rider")
+                }}
                 className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
               >
                 RIDER
@@ -133,11 +143,19 @@ function Dashboard() {
                 PROFILE
               </button>
               <button
-                onClick={() => setMenuOpen(false)}
-                className="w-full text-left mt-4 px-4 py-3 rounded-xl font-medium transition bg-slate-800 text-white"
+                onClick={() => {
+                  setMenuOpen(false)
+                  localStorage.removeItem("user")
+                  localStorage.removeItem("isRider")
+                  localStorage.removeItem("riderProfile")
+                  localStorage.removeItem("token")
+                  navigate("/login")
+                }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
               >
-                Close
+                LOGOUT
               </button>
+              
             </div>
           </aside>
         </div>
@@ -177,8 +195,8 @@ function Dashboard() {
                       <div className="flex items-start justify-between">
                         <div>
                           <p className="font-semibold text-slate-900 dark:text-white">{o.riderName || "-"}</p>
-                          <p className="text-sm text-slate-500">{o.scooterNumber} • {o.collegeName}</p>
-                          <p className="text-sm text-slate-500">📞 {o.phone}</p>
+                          <p className="text-sm text-slate-500">🎓 {o.destination || "-"}</p>
+                          <p className="text-sm text-slate-500">🕒 {o.departureTime || "-"}</p>
                           <p className="text-xs text-slate-400">
                             Pickup: {typeof o.pickupLat === "number" && typeof o.pickupLng === "number"
                               ? (placeNames[`${o.pickupLat},${o.pickupLng}`] || `${o.pickupLat.toFixed(5)}, ${o.pickupLng.toFixed(5)}`)
@@ -225,9 +243,8 @@ function Dashboard() {
                               toast.error("This ride status is finalized")
                               return
                             }
-                            await fetch(`http://localhost:8000/ride-offers/${o.id}/reject`, { method: "POST" })
-                            const res = await fetch("http://localhost:8000/ride-offers")
-                            const data = await res.json()
+                            await apiFetch(`/ride-offers/${o.id}/reject`, { method: "POST" })
+                            const data = await apiFetch("/ride-offers")
                             setOffers(data?.offers || [])
                             toast.success("Ride rejected")
                           }}
@@ -290,6 +307,11 @@ function Dashboard() {
                       setAccepting(null)
                       return
                     }
+                    if (user && selected.riderUid === user.uid) {
+                      toast.error("You cannot book your own ride")
+                      setAccepting(null)
+                      return
+                    }
                     if (!passengerForm.passengerName.trim() || !passengerForm.passengerPhone.trim()) {
                       toast.error("Enter passenger name and phone")
                       return
@@ -299,21 +321,24 @@ function Dashboard() {
                       return
                     }
                     const t = toast.loading("Accepting ride...")
-                    await fetch(`http://localhost:8000/ride-offers/${accepting}/accept`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        passengerName: passengerForm.passengerName,
-                        passengerPhone: passengerForm.passengerPhone,
-                        passengerLat: passengerLoc ? passengerLoc[0] : null,
-                        passengerLng: passengerLoc ? passengerLoc[1] : null,
-                      }),
-                    })
-                    setAccepting(null)
-                    const res = await fetch("http://localhost:8000/ride-offers")
-                    const data = await res.json()
-                    setOffers(data?.offers || [])
-                    toast.success("Ride accepted", { id: t })
+                    try {
+                      await apiFetch(`/ride-offers/${accepting}/accept`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          passengerName: passengerForm.passengerName,
+                          passengerPhone: passengerForm.passengerPhone,
+                          passengerLat: passengerLoc ? passengerLoc[0] : null,
+                          passengerLng: passengerLoc ? passengerLoc[1] : null,
+                        }),
+                      })
+                      setAccepting(null)
+                      const data = await apiFetch("/ride-offers")
+                      setOffers(data?.offers || [])
+                      toast.success("Ride accepted", { id: t })
+                    } catch (err) {
+                      toast.error(err.message || "Failed to accept", { id: t })
+                    }
                   }}
                 >
                   Confirm Accept

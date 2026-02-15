@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import "../utils/leafletIconFix"
 import toast from "react-hot-toast"
+import { apiFetch } from "../lib/api"
 
 function NewRide() {
   const { id } = useParams()
@@ -11,6 +12,7 @@ function NewRide() {
   const [offers, setOffers] = useState([])
   const [placeNames, setPlaceNames] = useState({})
   const [currentLoc, setCurrentLoc] = useState(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const ride = useMemo(() => offers.find((o) => o.id === id), [offers, id])
   const [showPayment, setShowPayment] = useState(false)
   const [fareInfo, setFareInfo] = useState({ km: 0, price: 25 })
@@ -25,9 +27,7 @@ function NewRide() {
     let mounted = true
     ;(async () => {
       try {
-        const API = "http://localhost:8001"
-        const res = await fetch(`${API}/ride-offers`)
-        const data = await res.json()
+        const data = await apiFetch("/ride-offers")
         if (mounted) setOffers(data?.offers || [])
       } catch {
         /* ignore */
@@ -39,9 +39,7 @@ function NewRide() {
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const API = "http://localhost:8001"
-        const res = await fetch(`${API}/ride-offers`)
-        const data = await res.json()
+        const data = await apiFetch("/ride-offers")
         setOffers(data?.offers || [])
       } catch {
         /* ignore */
@@ -103,10 +101,8 @@ function NewRide() {
   }
   const completeRide = async () => {
     try {
-      const API = "http://localhost:8001"
-      await fetch(`${API}/ride-offers/${id}/complete`, { method: "POST" })
-      const res = await fetch(`${API}/ride-offers`)
-      const data = await res.json()
+      await apiFetch(`/ride-offers/${id}/complete`, { method: "POST" })
+      const data = await apiFetch("/ride-offers")
       setOffers(data?.offers || [])
       toast.success("Payment recorded — ride completed")
       navigate("/dashboard")
@@ -117,6 +113,77 @@ function NewRide() {
 
   return (
     <main className="min-h-screen bg-slate-100 dark:bg-slate-950 p-6">
+      {/* Hamburger */}
+      <button
+        className="fixed left-4 top-4 z-50 p-3 rounded-xl bg-white dark:bg-slate-800 border shadow hover:bg-slate-50 dark:hover:bg-slate-700"
+        onClick={() => setMenuOpen((v) => !v)}
+        title="Menu"
+        aria-label="Menu"
+      >
+        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white mb-1"></span>
+        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white mb-1"></span>
+        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white"></span>
+      </button>
+      {menuOpen && (
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 px-6 pt-16 pb-6">
+            <h2 className="text-2xl font-extrabold mb-6 text-white">Menu</h2>
+            <div className="space-y-0 divide-y divide-slate-700">
+              <button
+                onClick={() => { setMenuOpen(false); navigate("/dashboard") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                PASSENGER
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false)
+                  const raw = localStorage.getItem("user")
+                  const u = raw ? JSON.parse(raw) : null
+                  const has = !!u && !!u.isRider
+                  navigate(has ? "/giveride" : "/become-rider")
+                }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                RIDER
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); toast.success("History coming soon") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                HISTORY
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); toast.success("Contact coming soon") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                CONTACT
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); toast.success("Profile coming soon") }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                PROFILE
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false)
+                  localStorage.removeItem("user")
+                  localStorage.removeItem("isRider")
+                  localStorage.removeItem("riderProfile")
+                  localStorage.removeItem("token")
+                  navigate("/login")
+                }}
+                className="w-full text-left px-4 py-3 font-medium text-white transition hover:bg-slate-800"
+              >
+                LOGOUT
+              </button>
+              
+            </div>
+          </aside>
+        </div>
+      )}
       <div className="max-w-5xl mx-auto space-y-6">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Ride Details</h1>
 

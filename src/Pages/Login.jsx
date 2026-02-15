@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { FaEye, FaEyeSlash } from "react-icons/fa"
-import { apiFetch, setToken } from "../lib/api"
+import { apiFetch, setToken, clearToken } from "../lib/api"
 import toast from "react-hot-toast"
 import { useNavigate } from "react-router-dom"
 
@@ -26,10 +26,21 @@ function LoginUser() {
         body: JSON.stringify({ email, password })
       })
       setToken(data.token)
+      const me = await apiFetch("/users/me")
+      if (!me?.user) {
+        clearToken()
+        localStorage.removeItem("user")
+        toast.error("Login failed: user not found", { id: toastId })
+        return
+      }
+      localStorage.setItem("user", JSON.stringify(me.user))
+      localStorage.removeItem("isRider")
+      localStorage.removeItem("riderProfile")
       toast.success("Login successful 🎉", { id: toastId })
       navigate("/dashboard")
 
     } catch (err) {
+      clearToken()
       toast.error(err.message || "Login failed", { id: toastId })
     } finally {
       setLoading(false)
