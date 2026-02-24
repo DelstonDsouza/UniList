@@ -1,116 +1,247 @@
-import { MapContainer, TileLayer, Marker } from "react-leaflet"
+// src/pages/rider/RiderHome.jsx
+
+// ─── Imports ──────────────────────────────────────────────────────────────────
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet" // added useMap
 import "leaflet/dist/leaflet.css"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import homeIcon from "../../assets/icons/home-icon.svg"
+import homeIcon    from "../../assets/icons/home-icon.svg"
 import exploreIcon from "../../assets/icons/explore-icon.svg"
 import profileIcon from "../../assets/icons/profile-icon.svg"
 
+// ─── FlyToLocation ────────────────────────────────────────────────────────────
+// Must be OUTSIDE RiderHome — it's a react-leaflet child component
+// Automatically flies the map to the user's GPS position once it loads
+function FlyToLocation({ position }) {
+  const map = useMap() // access the Leaflet map instance
+
+  useEffect(() => {
+    if (position) {
+      // Smoothly animate map center to GPS coordinates
+      map.flyTo(position, 16, { animate: true, duration: 1.2 })
+    }
+  }, [position, map])
+
+  return null // renders nothing, just controls the map
+}
+// Recenters map when GPS coordinates arrive
+// Uses setView instead of flyTo to avoid animation crash on static map
+function RecenterMap({ position }) {
+  const map = useMap()
+  useEffect(() => {
+    if (position) map.setView(position, 16)
+  }, [position])
+  return null
+}
+
+// ─── extractShortName ─────────────────────────────────────────────────────────
+// Converts Nominatim reverse geocode response into a readable address
+// Format: "Road Name, Neighbourhood, City"
+// Example: "Devarapadau Cross Lane 2, Vamanjoor, Mangaluru"
+const extractShortName = (data) => {
+  const a = data.address || {}
+
+  const road         = a.road          || ""  // street name
+  const neighbourhood = a.neighbourhood || a.suburb || "" // area name
+  const city         = a.city || a.town || a.village || a.county || "" // city
+
+  // Return most detailed format available
+  if (road && neighbourhood && city) return `${road}, ${neighbourhood}, ${city}`
+  if (road && city)                  return `${road}, ${city}`
+  if (neighbourhood && city)         return `${neighbourhood}, ${city}`
+  if (city)                          return city
+
+  // Last resort: first 3 parts of full display_name
+  return data.display_name?.split(",").slice(0, 3).join(",").trim() ?? "Current Location"
+}
+
+// ─── formatTime ───────────────────────────────────────────────────────────────
+// Converts 24h time input value (e.g. "08:35") to 12h display (e.g. "8:35 AM")
+const formatTime = (time24) => {
+  if (!time24) return ""
+  const [h, m] = time24.split(":").map(Number)
+  const suffix = h >= 12 ? "PM" : "AM"
+  const hour   = h % 12 || 12
+  return `${hour}:${m.toString().padStart(2, "0")} ${suffix}`
+}
+
+// ─── RiderHome ────────────────────────────────────────────────────────────────
 export default function RiderHome() {
-  const [userLocation, setUserLocation] = useState(null)
-  const [locationName, setLocationName] = useState("Fetching location...")
+
+  // State: GPS coordinates [lat, lng]
+  const [userLocation,  setUserLocation]  = useState(null)
+  // State: human-readable address string
+  const [locationName,  setLocationName]  = useState("Fetching location...")
+  // State: departure time in 24h format from input
   const [departureTime, setDepartureTime] = useState("")
-  const [showPopup, setShowPopup] = useState(false);
-  const [timeError, setTimeError] = useState(false)
+  // State: confirmation popup visibility
+  const [showPopup,     setShowPopup]     = useState(false)
+  // State: validation error flags
+  const [timeError,     setTimeError]     = useState(false)
   const [locationError, setLocationError] = useState(false)
+
   const navigate = useNavigate()
 
-  // FIXED COLLEGE DESTINATION
-  const collegeLocation = [12.872109642876621, 74.84534749009204] // St Aloysius College Mangalore
-  const collegeName = "St Aloysius College, Mangalore"
+  // Fixed college destination coordinates
+  const collegeLocation = [12.872109642876621, 74.84534749009204]
+  const collegeName     = "St Aloysius College, Mangalore"
 
-  // FETCH LIVE USER LOCATION
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude
-        const lng = pos.coords.longitude
-        setUserLocation([lat, lng])
+  // ─── Fetch GPS + Reverse Geocode ───────────────────────────────────────────
+ useEffect(() => {
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const lat = pos.coords.latitude
+      const lng = pos.coords.longitude
 
-        // reverse geocode location name
+      setUserLocation([lat, lng])
+
+      try {
         const res = await fetch(
-  `${import.meta.env.VITE_NOMINATIM_URL}?lat=${lat}&lon=${lng}&format=json`
-)
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+          {
+            headers: {
+              "Accept-Language": "en",
+              "User-Agent": "RideMate/1.0"   // Nominatim requires this
+            }
+          }
+        )
         const data = await res.json()
-        setLocationName(data.display_name)
-      },
-      () => {
-        alert("Please enable location permission")
+        setLocationName(extractShortName(data))
+      } catch {
+        setLocationName("Current Location")
       }
-    )
-  }, [])
+    },
+    () => {
+      setLocationName("Location unavailable")
+      alert("Please enable location permission")
+    },
+    {
+      enableHighAccuracy: true,  // ← forces GPS chip, not WiFi/IP
+      timeout: 10000,
+      maximumAge: 0              // ← no cached position, always fresh
+    }
+  )
+}, [])
 
-  // DISABLE PAST TIMES
+  // ─── Get current time as min value for time input ─────────────────────────
+  // Prevents user from selecting past departure times
   const getMinTime = () => {
-    const now = new Date()
-    const hours = now.getHours().toString().padStart(2, "0")
+    const now     = new Date()
+    const hours   = now.getHours().toString().padStart(2, "0")
     const minutes = now.getMinutes().toString().padStart(2, "0")
     return `${hours}:${minutes}`
   }
 
+ // ─── Validate form before showing popup ───────────────────────────────────
+const handleSearch = () => {
+  let hasError = false
+
+  // Must have GPS location
+  if (!userLocation) { setLocationError(true);  hasError = true }
+  else                 setLocationError(false)
+
+  // Must have departure time selected
+  if (!departureTime) {
+    setTimeError(true)
+    hasError = true
+  } else {
+    // Check if selected time is in the past
+    const [h, m]   = departureTime.split(":").map(Number)
+    const selected = new Date()
+    selected.setHours(h, m, 0, 0)
+    if (selected < new Date()) {
+      setTimeError(true)
+      hasError = true
+    } else {
+      setTimeError(false)
+    }
+  }
+
+  if (hasError) return
+
+  // All valid — show confirmation popup
+  setShowPopup(true)
+}
+
+  // ─── Navigate to searching screen on confirm ───────────────────────────────
+  const handleConfirm = () => {
+      console.log("departureTime value:", departureTime) // ADD THIS
+      console.log("formatted:", formatTime(departureTime)) // ADD THIS
+    setShowPopup(false)
+    navigate("/rider-searching", {
+      state: {
+        userLocation,
+        collegeLocation,
+        departureTime: formatTime(departureTime), // pass formatted "8:35 PM" not "08:35"
+      },
+    })
+  }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-100 pb-24">
 
-      {/* HEADER */}
+      {/* ── HEADER ── */}
       <div className="flex items-center justify-between px-4 pt-4">
         <button className="text-2xl">☰</button>
         <h1 className="text-lg font-semibold">Welcome, Rider !</h1>
         <div className="w-9 h-9 bg-teal-400 rounded-full" />
       </div>
 
-      {/* MAP - STATIC PIN AT USER LOCATION */}
+      {/* ── MAP ── */}
+      {/* Shows a placeholder until GPS resolves, then renders map with pin */}
       <div className="mt-4 mx-4 rounded-3xl overflow-hidden shadow-sm">
-        {userLocation && (
+        {userLocation ? (
           <MapContainer
-            center={userLocation}
+            center={userLocation}  // initial center (GPS coords)
             zoom={15}
             style={{ height: "220px", width: "100%" }}
-            dragging={false}
+            dragging={false}        // disable drag — static preview map
             zoomControl={false}
             scrollWheelZoom={false}
             doubleClickZoom={false}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+            {/* Blue pin at user's GPS location */}
             <Marker position={userLocation} />
+            <RecenterMap position={userLocation} />
+
+            {/* Fly map to GPS location once loaded */}
+            <FlyToLocation position={userLocation} />
           </MapContainer>
+        ) : (
+          // Shown while GPS is loading
+          <div
+            className="flex items-center justify-center text-gray-400 text-sm"
+            style={{ height: "220px", background: "#f1f5f9" }}
+          >
+            📍 Fetching your location...
+          </div>
         )}
       </div>
 
-        {/* PopUp confirmation */}
-        {showPopup && (
-  <div className="popup-overlay">
-    <div className="popup-box bg-white">
-      <h2>Post a ride ?</h2>
+      {/* ── CONFIRMATION POPUP ── */}
+      {showPopup && (
+        <div className="popup-overlay">
+          <div className="popup-box bg-white">
+            <h2>Post a ride?</h2>
+            <div className="popup-actions">
+              {/* Cancel closes popup */}
+              <button className="cancel-btn"  onClick={() => setShowPopup(false)}>
+                Cancel
+              </button>
+              {/* Confirm navigates to searching screen */}
+              <button className="confirm-btn" onClick={handleConfirm}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="popup-actions">
-        <button
-          className="cancel-btn"
-          onClick={() => setShowPopup(false)}
-        >
-          Cancel
-        </button>
-
-        <button
-          className="confirm-btn"
-          onClick={() => {
-            setShowPopup(false);
-            navigate("/rider-searching", {
-      state: {
-        userLocation,
-        collegeLocation
-      }
-    })
-          }}
-        >
-          Confirm
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-      {/* POST RIDE CARD */}
+      {/* ── POST RIDE CARD ── */}
       <div className="px-4 mt-5">
         <h2 className="font-semibold mb-3">Post a Ride</h2>
 
@@ -119,25 +250,22 @@ export default function RiderHome() {
           style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
         >
 
-          {/* CURRENT LOCATION */}
+          {/* Current Location — auto-filled from GPS + reverse geocode */}
           <div>
             <label className="text-sm opacity-80">Current Location</label>
             <input
-  value={locationName}
-  readOnly
-  className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${
-    locationError ? "border-red-500" : "border-transparent"
-  }`}
-/>
-
-{locationError && (
-  <p className="text-red-500 text-xs mt-1">
-    Location not available
-  </p>
-)}
+              value={locationName}
+              readOnly
+              className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${
+                locationError ? "border-red-500" : "border-transparent"
+              }`}
+            />
+            {locationError && (
+              <p className="text-red-500 text-xs mt-1">Location not available</p>
+            )}
           </div>
 
-          {/* DESTINATION (FIXED) */}
+          {/* Destination — fixed to college */}
           <div>
             <label className="text-sm opacity-80">Destination</label>
             <input
@@ -147,81 +275,59 @@ export default function RiderHome() {
             />
           </div>
 
-          {/* DEPARTURE TIME */}
-          <div>
-            <label className="text-sm opacity-80">Departure Time</label>
-            <input
-  type="time"
-  min={getMinTime()}
-  value={departureTime}
-  onChange={(e) => {
-    setDepartureTime(e.target.value)
-    setTimeError(false)
-  }}
-  className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${
-    timeError ? "border-red-500" : "border-transparent"
-  }`}
-/>
-
-{timeError && (
-  <p className="text-red-500 text-xs mt-1">
-    Please select departure time
-  </p>
-)}
-          </div>
-
-{/* SEARCH BUTTON */}
-<button
-  onClick={() => {
-
-    let hasError = false
-
-    if (!userLocation) {
-      setLocationError(true)
-      hasError = true
-    } else {
-      setLocationError(false)
-    }
-
-    if (!departureTime) {
-      setTimeError(true)
-      hasError = true
-    } else {
+          {/* Departure Time — time picker, no min restriction (validated on submit) */}
+<div>
+  <label className="text-sm opacity-80">Departure Time</label>
+  <input
+    type="time"
+    value={departureTime}
+    onChange={(e) => {
+      setDepartureTime(e.target.value)
       setTimeError(false)
-    }
+    }}
+    className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${
+      timeError ? "border-red-500" : "border-transparent"
+    }`}
+  />
+  {timeError && (
+    <p className="text-red-500 text-xs mt-1">
+      Please select a valid future departure time
+    </p>
+  )}
+</div>
 
-    if (hasError) return
+          {/* Search button — validates then shows popup */}
+          <button
+            onClick={handleSearch}
+            className="w-full mt-2 bg-gray-200 hover:bg-gray-300 text-black font-medium py-3 rounded-xl transition"
+          >
+            Search for Passenger
+          </button>
 
-    setShowPopup(true)
-  }}
-  className="w-full mt-2 bg-gray-200 hover:bg-gray-300 text-black font-medium py-3 rounded-xl transition"
->
-  Search for Passenger
-</button>
+          {/* Saved Rides — placeholder for future feature */}
+          <button className="mt-4 bg-gray-200 px-4 py-2 rounded-lg text-black">
+            Saved Rides
+          </button>
 
-        {/* SAVED RIDES */}
-        <button className="mt-4 bg-gray-200 px-4 py-2 rounded-lg">
-          Saved Rides
-        </button>
+        </div>
       </div>
-    </div> 
-      {/* BOTTOM NAV */}
+
+      {/* ── BOTTOM NAV ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around py-3">
         <div className="text-center">
           <img src={homeIcon} className="w-6 mx-auto mb-1" />
           <div className="text-sm font-medium">Home</div>
         </div>
-
         <div className="text-center text-gray-400">
           <img src={exploreIcon} className="w-6 mx-auto mb-1 opacity-60" />
           <div className="text-sm">History</div>
         </div>
-
         <div className="text-center text-gray-400">
           <img src={profileIcon} className="w-6 mx-auto mb-1 opacity-60" />
           <div className="text-sm">Account</div>
         </div>
       </div>
+
     </div>
   )
 }
