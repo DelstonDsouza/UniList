@@ -26,7 +26,7 @@ import RiderHome from "./pages/rider/RiderHome"
 import PickLocation from "./pages/rider/PickLocation"
 import RiderSearching from "./pages/rider/RiderSearching"
 import RideConfirmed from "./pages/rider/RideConfirmed"
-import RiderOTPVerify from "./pages/rider/RiderOTPVerify"
+import RidePickup from "./pages/rider/RidePickup"       // ← new (replaces RiderOTPVerify)
 import GiveRide from "./pages/rider/GiveRide"
 import RiderWait from "./pages/rider/RiderWait"
 import BecomeRider from "./pages/rider/BecomeRider"
@@ -42,7 +42,7 @@ import Admin from "./pages/admin/Admin"
 
 // ── Auth Guard ──────────────────────────────────────────────────────────────
 const AuthGate = ({ children }) => {
-  const [ready, setReady] = useState(false)
+  const [ready,  setReady]  = useState(false)
   const [authed, setAuthed] = useState(false)
 
   useEffect(() => {
@@ -53,7 +53,6 @@ const AuthGate = ({ children }) => {
 
   if (!ready) return null
   if (!authed) return <Navigate to="/login" replace />
-
   return children
 }
 
@@ -72,34 +71,47 @@ function App() {
 
         <Routes>
 
-          {/* Public */}
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          {/* ── Public ───────────────────────────────────────────────────── */}
+          <Route path="/"          element={<Home />} />
+          <Route path="/login"     element={<Login />} />
+          <Route path="/register"  element={<Register />} />
           <Route path="/login/rider" element={<RiderLogin />} />
 
-          {/* Onboarding */}
+          {/* ── Onboarding ───────────────────────────────────────────────── */}
           <Route path="/register-details" element={<AuthGate><RegisterDetails /></AuthGate>} />
-          <Route path="/select-role" element={<AuthGate><SelectRole /></AuthGate>} />
+          <Route path="/select-role"      element={<AuthGate><SelectRole /></AuthGate>} />
 
-          {/* Rider */}
+          {/* ── Rider ────────────────────────────────────────────────────── */}
+
+          {/* /rider and /rider-home both go to RiderHome */}
+          <Route path="/rider"      element={<AuthGate><RiderHome /></AuthGate>} />
           <Route path="/rider-home" element={<AuthGate><RiderHome /></AuthGate>} />
-          <Route path="/pick-location" element={<AuthGate><PickLocation /></AuthGate>} />
+
+          <Route path="/pick-location"   element={<AuthGate><PickLocation /></AuthGate>} />
           <Route path="/rider-searching" element={<AuthGate><RiderSearching /></AuthGate>} />
-          <Route path="/ride-confirmed" element={<AuthGate><RideConfirmed /></AuthGate>} />
-          <Route path="/rider-otp-verify" element={<AuthGate><RiderOTPVerify /></AuthGate>} />
-          <Route path="/giveride" element={<AuthGate><GiveRide /></AuthGate>} />
-          <Route path="/rider-wait/:id" element={<AuthGate><RiderWait /></AuthGate>} />
-          <Route path="/become-rider" element={<AuthGate><BecomeRider /></AuthGate>} />
-          <Route path="/rider-registration" element={<AuthGate><RiderRegistration /></AuthGate>} />
+          <Route path="/ride-confirmed"  element={<AuthGate><RideConfirmed /></AuthGate>} />
 
-          {/* Passenger */}
+          {/* New combined pickup + OTP page (replaces /rider-otp-verify) */}
+          <Route path="/ride-pickup"     element={<AuthGate><RidePickup /></AuthGate>} />
+
+          {/* Keep old OTP route alive so existing links don't 404 — redirects to new page */}
+          <Route path="/rider-otp-verify" element={<Navigate to="/ride-pickup" replace />} />
+
+          <Route path="/giveride"            element={<AuthGate><GiveRide /></AuthGate>} />
+          <Route path="/rider-wait/:id"      element={<AuthGate><RiderWait /></AuthGate>} />
+          <Route path="/become-rider"        element={<AuthGate><BecomeRider /></AuthGate>} />
+          <Route path="/rider-registration"  element={<AuthGate><RiderRegistration /></AuthGate>} />
+
+          {/* ── Passenger ────────────────────────────────────────────────── */}
           <Route path="/passenger-home" element={<AuthGate><PassengerHome /></AuthGate>} />
-          <Route path="/passenger-otp" element={<AuthGate><PassengerOTPDisplay /></AuthGate>} />
-          <Route path="/new-ride/:id" element={<NewRide />} />
+          <Route path="/passenger-otp"  element={<AuthGate><PassengerOTPDisplay /></AuthGate>} />
+          <Route path="/new-ride/:id"   element={<NewRide />} />
 
-          {/* Admin */}
+          {/* ── Admin ────────────────────────────────────────────────────── */}
           <Route path="/admin" element={<AuthGate><Admin /></AuthGate>} />
+
+          {/* ── Catch-all: redirect unknown paths to home ─────────────────── */}
+          <Route path="*" element={<Navigate to="/" replace />} />
 
         </Routes>
       </div>
