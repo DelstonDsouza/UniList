@@ -65,7 +65,7 @@ const SwipeButton = ({ label, onSwipeComplete, color = "#16a34a", disabled = fal
         className="absolute inset-0 flex items-center justify-center text-sm font-semibold tracking-wide pointer-events-none"
         style={{ color, opacity: Math.max(1 - progress * 2, 0) }}
       >
-        {completed ? "✓ Starting..." : label}
+        {completed ? "Γ£ô Starting..." : label}
       </span>
       <div
         className="absolute top-1 flex items-center justify-center rounded-xl shadow-lg cursor-grab active:cursor-grabbing touch-none"

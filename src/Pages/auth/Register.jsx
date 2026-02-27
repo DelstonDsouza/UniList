@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { FaEye, FaEyeSlash } from "react-icons/fa"
-import { apiFetch } from "../lib/api"
+import { apiFetch } from "../../services/api"
 import toast from "react-hot-toast"
 import { useNavigate } from "react-router-dom"
 

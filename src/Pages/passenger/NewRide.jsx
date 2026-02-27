@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
-import "../utils/leafletIconFix"
+import "../../utils/leafletIcons"
 import toast from "react-hot-toast"
-import { apiFetch } from "../lib/api"
+import { apiFetch } from "../../services/api"
 
 function NewRide() {
   const { id } = useParams()
@@ -25,14 +25,14 @@ function NewRide() {
 
   useEffect(() => {
     let mounted = true
-    ;(async () => {
-      try {
-        const data = await apiFetch("/ride-offers")
-        if (mounted) setOffers(data?.offers || [])
-      } catch {
-        /* ignore */
-      }
-    })()
+      ; (async () => {
+        try {
+          const data = await apiFetch("/ride-offers")
+          if (mounted) setOffers(data?.offers || [])
+        } catch {
+          /* ignore */
+        }
+      })()
     return () => { mounted = false }
   }, [])
 
@@ -82,11 +82,11 @@ function NewRide() {
 
   const haversineKm = (aLat, aLng, bLat, bLng) => {
     const R = 6371
-    const dLat = (Math.PI/180) * (bLat - aLat)
-    const dLng = (Math.PI/180) * (bLng - aLng)
-    const lat1 = (Math.PI/180) * aLat
-    const lat2 = (Math.PI/180) * bLat
-    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2
+    const dLat = (Math.PI / 180) * (bLat - aLat)
+    const dLng = (Math.PI / 180) * (bLng - aLng)
+    const lat1 = (Math.PI / 180) * aLat
+    const lat2 = (Math.PI / 180) * bLat
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
     return 2 * R * Math.asin(Math.sqrt(h))
   }
   const openPayment = () => {
@@ -179,7 +179,7 @@ function NewRide() {
               >
                 LOGOUT
               </button>
-              
+
             </div>
           </aside>
         </div>

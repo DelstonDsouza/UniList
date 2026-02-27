@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import { useEffect, useRef, useState } from "react"
-import CanvasParticles from "../../Components/ui/SectionPattern"
+import CanvasParticles from "../../components/ui/SectionPattern"
 
 function Hero() {
   const [visible, setVisible] = useState(false)
@@ -23,7 +23,7 @@ function Hero() {
       ref={heroRef}
       className="relative overflow-hidden bg-slate-900 text-white min-h-screen"
     >
-      {/* 🟢 Canvas Particles */}
+      {/* ≡ƒƒó Canvas Particles */}
       <CanvasParticles />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-28 grid md:grid-cols-2 gap-14 items-center">
@@ -61,7 +61,7 @@ function Hero() {
           </div>
         </div>
 
-        {/* RIGHT SIDE — DEMO VIDEO */}
+        {/* RIGHT SIDE ΓÇö DEMO VIDEO */}
         <div
           className={`transition-all duration-700 delay-150 ease-out
           ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-10"}`}

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRide } from '../../context/RideContext';
 import { useOTPVerification } from '../../hooks/useOTPVerification';
-import OTPInput from '../../Components/ui/OTPInput';
+import OTPInput from '../../components/ui/OTPInput';
 
 const RiderOTPVerify = () => {
   const navigate = useNavigate();

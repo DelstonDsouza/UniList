@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react"
 import { FaUserPlus, FaMapMarkedAlt, FaHandshake, FaCar } from "react-icons/fa"
-import ThreeDFeatureCard from "../../Components/ui/ThreeDFeatureCard"
-import SectionPattern from "../../Components/ui/SectionPattern"
+import ThreeDFeatureCard from "../../components/ui/ThreeDFeatureCard"
+import SectionPattern from "../../components/ui/SectionPattern"
 
 function HowItWorks() {
   const sectionRef = useRef(null)
   const [visible, setVisible] = useState(false)
 
-  // 👀 Trigger slide-in when section enters viewport
+  // ≡ƒæÇ Trigger slide-in when section enters viewport
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -25,7 +25,7 @@ function HowItWorks() {
       ref={sectionRef}
       className="relative overflow-hidden py-24 bg-slate-50 dark:bg-slate-900"
     >
-      {/* 🌀 Background Pattern */}
+      {/* ≡ƒîÇ Background Pattern */}
       <SectionPattern />
 
       {/* Content */}

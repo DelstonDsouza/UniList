@@ -1,11 +1,11 @@
-import FeatureCard from "../../Components/ui/AnimatedCard"
+import FeatureCard from "../../components/ui/AnimatedCard"
 import { FaMapMarkerAlt, FaUserGraduate, FaLeaf } from "react-icons/fa"
-import SectionPattern from "../../Components/ui/SectionPattern"
+import SectionPattern from "../../components/ui/SectionPattern"
 
 function Features() {
   return (
     <section className="relative overflow-hidden py-24 bg-slate-50 dark:bg-slate-900">
-      
+
       {/* Background Pattern */}
       <SectionPattern />
 

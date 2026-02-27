@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { auth } from "../firebase/firebase-config"
+import { auth } from "../../config/firebase"
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth"
 
 export default function Login() {

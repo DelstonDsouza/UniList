@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { FaRupeeSign, FaTrafficLight, FaLeaf } from "react-icons/fa"
-import SectionPattern from "../../Components/ui/SectionPattern"
+import SectionPattern from "../../components/ui/SectionPattern"
 
 function Benefits() {
   const sectionRef = useRef(null)
@@ -42,7 +42,7 @@ function Benefits() {
           transition-all duration-700 delay-100
           ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
         >
-          KozhiGo isn’t just about rides — it’s about smarter cities,
+          KozhiGo isnΓÇÖt just about rides ΓÇö itΓÇÖs about smarter cities,
           affordable student life, and a cleaner future.
         </p>
 

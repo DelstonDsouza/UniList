@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from "react"
 import { MapContainer, TileLayer, Marker, Polyline } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
-import { riderIcon, passengerIcon } from "../utils/leafletIconFix"
+import { riderIcon, passengerIcon } from "../../utils/leafletIcons"
 import { useParams } from "react-router-dom"
-import { apiFetch } from "../lib/api"
+import { apiFetch } from "../../services/api"
 
 
 export default function RiderWait() {
@@ -124,43 +124,43 @@ export default function RiderWait() {
         </div>
       )}
       {/* CANCEL RIDE POPUP */}
-{showCancelPopup && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-    <div className="bg-white dark:bg-[#111] p-7 rounded-2xl shadow-xl text-center w-[90%] max-w-sm">
+      {showCancelPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-[#111] p-7 rounded-2xl shadow-xl text-center w-[90%] max-w-sm">
 
-      <h2 className="text-xl font-semibold mb-3">
-        Cancel the ride?
-      </h2>
+            <h2 className="text-xl font-semibold mb-3">
+              Cancel the ride?
+            </h2>
 
-      <p className="text-gray-500 text-sm mb-6">
-        Are you sure you want to cancel this ride? This action cannot be undone.
-      </p>
+            <p className="text-gray-500 text-sm mb-6">
+              Are you sure you want to cancel this ride? This action cannot be undone.
+            </p>
 
-      <div className="flex gap-3">
-        <button
-          onClick={() => setShowCancelPopup(false)}
-          className="flex-1 py-3 rounded-xl bg-gray-200 dark:bg-white/10 font-medium"
-        >
-          No
-        </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCancelPopup(false)}
+                className="flex-1 py-3 rounded-xl bg-gray-200 dark:bg-white/10 font-medium"
+              >
+                No
+              </button>
 
-        <button
-          onClick={async () => {
-            try {
-              await apiFetch(`/ride-offers/${id}/cancel`, { method: "POST" })
-              window.location.href = "/dashboard"
-            } catch {
-              alert("Failed to cancel ride")
-            }
-          }}
-          className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium"
-        >
-          Yes, Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+              <button
+                onClick={async () => {
+                  try {
+                    await apiFetch(`/ride-offers/${id}/cancel`, { method: "POST" })
+                    window.location.href = "/dashboard"
+                  } catch {
+                    alert("Failed to cancel ride")
+                  }
+                }}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium"
+              >
+                Yes, Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TOP STATUS */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
@@ -178,11 +178,11 @@ export default function RiderWait() {
       <div className="absolute top-0 left-0 right-0 h-[55vh] z-0">
         {rider && (
           <MapContainer
-          center={rider}
-          zoom={13}
-          scrollWheelZoom={true}
-          zoomControl={false}
-          style={{ height: "100%", width: "100%" }}
+            center={rider}
+            zoom={13}
+            scrollWheelZoom={true}
+            zoomControl={false}
+            style={{ height: "100%", width: "100%" }}
           >
 
             <TileLayer
@@ -241,12 +241,12 @@ export default function RiderWait() {
 
           {/* Buttons */}
           <div className="flex gap-3 pt-2">
-          
-          {/* Cancel Ride Button*/}
+
+            {/* Cancel Ride Button*/}
             <button
-             onClick={() => setShowCancelPopup(true)}
+              onClick={() => setShowCancelPopup(true)}
               className="flex-1 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-red-500 py-3 rounded-xl font-medium"
-              > Cancel Ride </button>
+            > Cancel Ride </button>
 
 
             {/* Edit Ride Button*/}
@@ -254,7 +254,7 @@ export default function RiderWait() {
               Edit
             </button>
 
-             {/* Start Ride Button*/}
+            {/* Start Ride Button*/}
             <button
               disabled={!rideReady}
               onClick={async () => {
@@ -265,11 +265,10 @@ export default function RiderWait() {
                   alert("Failed to start ride")
                 }
               }}
-              className={`flex-1 py-3 rounded-xl font-medium transition ${
-                rideReady
-                  ? "bg-blue-600 hover:bg-blue-700"
-                  : "bg-blue-600/40 cursor-not-allowed"
-              }`}
+              className={`flex-1 py-3 rounded-xl font-medium transition ${rideReady
+                ? "bg-blue-600 hover:bg-blue-700"
+                : "bg-blue-600/40 cursor-not-allowed"
+                }`}
             >
               Start Ride
             </button>

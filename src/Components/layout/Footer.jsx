@@ -59,7 +59,7 @@ function Footer() {
 
       {/* BOTTOM BAR */}
       <div className="border-t border-slate-700 py-6 text-center text-sm">
-        © {new Date().getFullYear()} KozhiGo. All rights reserved.
+        ┬⌐ {new Date().getFullYear()} KozhiGo. All rights reserved.
       </div>
     </footer>
   )

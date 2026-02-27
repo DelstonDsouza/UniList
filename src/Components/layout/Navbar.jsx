@@ -1,7 +1,7 @@
 import { Link, NavLink, useNavigate } from "react-router-dom"
 import { useState } from "react"
-import { getToken, clearToken } from "../lib/api"
-import ThemeToggle from "./ui/toggle"
+import { getToken, clearToken } from "../../services/api"
+import ThemeToggle from "../ui/toggle"
 
 function Navbar() {
   const [open, setOpen] = useState(false)

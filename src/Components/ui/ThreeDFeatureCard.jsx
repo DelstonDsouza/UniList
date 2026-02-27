@@ -4,7 +4,7 @@ import styled from "styled-components"
 function ThreeDFeatureCard({ icon, title, description, step }) {
   const cardRef = useRef(null)
 
-  // 🎯 Cursor-based tilt
+  // ≡ƒÄ» Cursor-based tilt
   const handleMouseMove = (e) => {
     const card = cardRef.current
     const rect = card.getBoundingClientRect()
@@ -31,7 +31,7 @@ function ThreeDFeatureCard({ icon, title, description, step }) {
       "perspective(800px) rotateX(0deg) rotateY(0deg) scale(1)"
   }
 
-  // 👀 Scroll-in animation
+  // ≡ƒæÇ Scroll-in animation
   useEffect(() => {
     const card = cardRef.current
 

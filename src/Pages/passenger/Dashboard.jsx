@@ -8,8 +8,8 @@ import {
   Popup
 } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
-import "../utils/leafletIconFix"
-import { apiFetch } from "../lib/api"
+import "../../utils/leafletIcons"
+import { apiFetch } from "../../services/api"
 
 function Dashboard() {
   const [active, setActive] = useState("have")
@@ -155,7 +155,7 @@ function Dashboard() {
               >
                 LOGOUT
               </button>
-              
+
             </div>
           </aside>
         </div>
@@ -213,8 +213,8 @@ function Dashboard() {
                             ${(o.status || "pending") === "active"
                               ? "bg-green-600 text-white"
                               : (o.status || "pending") === "rejected"
-                              ? "bg-red-600 text-white"
-                              : "bg-yellow-500 text-white"}`}
+                                ? "bg-red-600 text-white"
+                                : "bg-yellow-500 text-white"}`}
                         >
                           {o.status || "pending"}
                         </span>
@@ -251,7 +251,7 @@ function Dashboard() {
                         >
                           Reject
                         </button>
-                        
+
                       </div>
                     </li>
                   ))}
@@ -348,9 +348,9 @@ function Dashboard() {
           </div>
         )}
 
-        
 
-        
+
+
       </main>
     </div>
   )

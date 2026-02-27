@@ -19,7 +19,7 @@ function CanvasParticles() {
     resize()
     window.addEventListener("resize", resize)
 
-    // ⚙️ CONFIG
+    // ΓÜÖ∩╕Å CONFIG
     const PARTICLE_COUNT = window.innerWidth < 768 ? 50 : 120
     const CENTER_FORCE = 0.0025       // pulls toward center
     const ATTRACTION_RADIUS = 180
@@ -33,7 +33,7 @@ function CanvasParticles() {
       active: false,
     }
 
-    // 🟢 Create particles around center
+    // ≡ƒƒó Create particles around center
     const particles = Array.from({ length: PARTICLE_COUNT }).map(() => {
       const angle = Math.random() * Math.PI * 2
       const radius = Math.random() * 120 // spread from center
@@ -46,7 +46,7 @@ function CanvasParticles() {
       }
     })
 
-    // 🎯 Mouse tracking (window)
+    // ≡ƒÄ» Mouse tracking (window)
     const handleMouseMove = (e) => {
       const rect = canvas.getBoundingClientRect()
       mouse.x = e.clientX - rect.left
@@ -65,17 +65,17 @@ function CanvasParticles() {
       ctx.clearRect(0, 0, width, height)
 
       particles.forEach((p) => {
-        /* 🎯 CENTER GRAVITY */
+        /* ≡ƒÄ» CENTER GRAVITY */
         const cx = centerX - p.x
         const cy = centerY - p.y
         p.vx += cx * CENTER_FORCE
         p.vy += cy * CENTER_FORCE
 
-        /* 🌊 NATURAL ROAMING */
+        /* ≡ƒîè NATURAL ROAMING */
         p.vx += (Math.random() - 0.5) * 0.03
         p.vy += (Math.random() - 0.5) * 0.03
 
-        /* 🧲 CURSOR ATTRACTION */
+        /* ≡ƒº▓ CURSOR ATTRACTION */
         if (mouse.active) {
           const dx = mouse.x - p.x
           const dy = mouse.y - p.y
@@ -88,22 +88,22 @@ function CanvasParticles() {
           }
         }
 
-        /* 🛑 FRICTION */
+        /* ≡ƒ¢æ FRICTION */
         p.vx *= FRICTION
         p.vy *= FRICTION
 
-        /* 🚀 SPEED LIMIT */
+        /* ≡ƒÜÇ SPEED LIMIT */
         const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy)
         if (speed > MAX_SPEED) {
           p.vx = (p.vx / speed) * MAX_SPEED
           p.vy = (p.vy / speed) * MAX_SPEED
         }
 
-        /* ➡️ MOVE */
+        /* Γ₧í∩╕Å MOVE */
         p.x += p.vx
         p.y += p.vy
 
-        /* 🎨 DRAW */
+        /* ≡ƒÄ¿ DRAW */
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
         ctx.fillStyle = "rgba(37, 99, 235, 0.8)" // KozhiGo blue

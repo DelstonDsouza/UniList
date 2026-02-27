@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import homeIcon    from "../../assets/icons/home-icon.svg"
+import homeIcon from "../../assets/icons/home-icon.svg"
 import exploreIcon from "../../assets/icons/explore-icon.svg"
 import profileIcon from "../../assets/icons/profile-icon.svg"
 
@@ -35,6 +35,19 @@ function RecenterMap({ position }) {
   return null
 }
 
+// ─── MapEvents ────────────────────────────────────────────────────────────────
+// Listens for clicks on the map to allow users to drop a pin anywhere
+import { useMapEvents } from "react-leaflet"
+
+function MapEvents({ onLocationSelect }) {
+  useMapEvents({
+    click(e) {
+      onLocationSelect([e.latlng.lat, e.latlng.lng])
+    },
+  })
+  return null
+}
+
 // ─── extractShortName ─────────────────────────────────────────────────────────
 // Converts Nominatim reverse geocode response into a readable address
 // Format: "Road Name, Neighbourhood, City"
@@ -42,15 +55,15 @@ function RecenterMap({ position }) {
 const extractShortName = (data) => {
   const a = data.address || {}
 
-  const road         = a.road          || ""  // street name
+  const road = a.road || ""  // street name
   const neighbourhood = a.neighbourhood || a.suburb || "" // area name
-  const city         = a.city || a.town || a.village || a.county || "" // city
+  const city = a.city || a.town || a.village || a.county || "" // city
 
   // Return most detailed format available
   if (road && neighbourhood && city) return `${road}, ${neighbourhood}, ${city}`
-  if (road && city)                  return `${road}, ${city}`
-  if (neighbourhood && city)         return `${neighbourhood}, ${city}`
-  if (city)                          return city
+  if (road && city) return `${road}, ${city}`
+  if (neighbourhood && city) return `${neighbourhood}, ${city}`
+  if (city) return city
 
   // Last resort: first 3 parts of full display_name
   return data.display_name?.split(",").slice(0, 3).join(",").trim() ?? "Current Location"
@@ -62,7 +75,7 @@ const formatTime = (time24) => {
   if (!time24) return ""
   const [h, m] = time24.split(":").map(Number)
   const suffix = h >= 12 ? "PM" : "AM"
-  const hour   = h % 12 || 12
+  const hour = h % 12 || 12
   return `${hour}:${m.toString().padStart(2, "0")} ${suffix}`
 }
 
@@ -70,104 +83,157 @@ const formatTime = (time24) => {
 export default function RiderHome() {
 
   // State: GPS coordinates [lat, lng]
-  const [userLocation,  setUserLocation]  = useState(null)
+  const [userLocation, setUserLocation] = useState(null)
   // State: human-readable address string
-  const [locationName,  setLocationName]  = useState("Fetching location...")
+  const [locationName, setLocationName] = useState("Fetching location...")
   // State: departure time in 24h format from input
   const [departureTime, setDepartureTime] = useState("")
   // State: confirmation popup visibility
-  const [showPopup,     setShowPopup]     = useState(false)
+  const [showPopup, setShowPopup] = useState(false)
   // State: validation error flags
-  const [timeError,     setTimeError]     = useState(false)
+  const [timeError, setTimeError] = useState(false)
   const [locationError, setLocationError] = useState(false)
 
   const navigate = useNavigate()
 
   // Fixed college destination coordinates
   const collegeLocation = [12.872109642876621, 74.84534749009204]
-  const collegeName     = "St Aloysius College, Mangalore"
+  const collegeName = "St Aloysius College, Mangalore"
 
   // ─── Fetch GPS + Reverse Geocode ───────────────────────────────────────────
- useEffect(() => {
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const lat = pos.coords.latitude
-      const lng = pos.coords.longitude
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
 
-      setUserLocation([lat, lng])
+        setUserLocation([lat, lng])
 
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-          {
-            headers: {
-              "Accept-Language": "en",
-              "User-Agent": "RideMate/1.0"   // Nominatim requires this
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+            {
+              headers: {
+                "Accept-Language": "en",
+                "User-Agent": "RideMate/1.0"   // Nominatim requires this
+              }
             }
-          }
-        )
-        const data = await res.json()
-        setLocationName(extractShortName(data))
-      } catch {
-        setLocationName("Current Location")
+          )
+          const data = await res.json()
+          setLocationName(extractShortName(data))
+        } catch {
+          setLocationName("Current Location")
+        }
+      },
+      () => {
+        setLocationName("Location unavailable")
+        alert("Please enable location permission")
+      },
+      {
+        enableHighAccuracy: true,  // ← forces GPS chip, not WiFi/IP
+        timeout: 10000,
+        maximumAge: 0              // ← no cached position, always fresh
       }
-    },
-    () => {
-      setLocationName("Location unavailable")
-      alert("Please enable location permission")
-    },
-    {
-      enableHighAccuracy: true,  // ← forces GPS chip, not WiFi/IP
-      timeout: 10000,
-      maximumAge: 0              // ← no cached position, always fresh
-    }
-  )
-}, [])
+    )
+  }, [])
 
   // ─── Get current time as min value for time input ─────────────────────────
   // Prevents user from selecting past departure times
   const getMinTime = () => {
-    const now     = new Date()
-    const hours   = now.getHours().toString().padStart(2, "0")
+    const now = new Date()
+    const hours = now.getHours().toString().padStart(2, "0")
     const minutes = now.getMinutes().toString().padStart(2, "0")
     return `${hours}:${minutes}`
   }
 
- // ─── Validate form before showing popup ───────────────────────────────────
-const handleSearch = () => {
-  let hasError = false
+  // ─── Reverse: Geocode user-typed address back to coordinates ──────────────
+  const handleLocationBlur = async () => {
+    // If they cleared it, or it still says "Fetching", do nothing
+    if (!locationName || locationName === "Fetching location..." || locationName === "Current Location") return
 
-  // Must have GPS location
-  if (!userLocation) { setLocationError(true);  hasError = true }
-  else                 setLocationError(false)
-
-  // Must have departure time selected
-  if (!departureTime) {
-    setTimeError(true)
-    hasError = true
-  } else {
-    // Check if selected time is in the past
-    const [h, m]   = departureTime.split(":").map(Number)
-    const selected = new Date()
-    selected.setHours(h, m, 0, 0)
-    if (selected < new Date()) {
-      setTimeError(true)
-      hasError = true
-    } else {
-      setTimeError(false)
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationName)}&format=json&limit=1`,
+        {
+          headers: {
+            "Accept-Language": "en",
+            "User-Agent": "RideMate/1.0",
+          },
+        }
+      )
+      const data = await res.json()
+      if (data && data.length > 0) {
+        const lat = parseFloat(data[0].lat)
+        const lng = parseFloat(data[0].lon)
+        setUserLocation([lat, lng]) // Updates the map pin!
+        setLocationError(false)
+        // Optionally update the name to the officially recognized format
+        // setLocationName(extractShortName({ display_name: data[0].display_name }))
+      }
+    } catch (e) {
+      console.error("Geocoding failed", e)
     }
   }
 
-  if (hasError) return
+  // ─── Map Click to Select Location ─────────────────────────────────────────
+  const handleMapClick = async (latlng) => {
+    const [lat, lng] = latlng
+    setUserLocation([lat, lng])
+    setLocationName("Fetching location...")
+    setLocationError(false)
 
-  // All valid — show confirmation popup
-  setShowPopup(true)
-}
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        {
+          headers: {
+            "Accept-Language": "en",
+            "User-Agent": "RideMate/1.0"
+          }
+        }
+      )
+      const data = await res.json()
+      setLocationName(extractShortName(data))
+    } catch {
+      setLocationName(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+    }
+  }
+
+  // ─── Validate form before showing popup ───────────────────────────────────
+  const handleSearch = () => {
+    let hasError = false
+
+    // Must have GPS location
+    if (!userLocation) { setLocationError(true); hasError = true }
+    else setLocationError(false)
+
+    // Must have departure time selected
+    if (!departureTime) {
+      setTimeError(true)
+      hasError = true
+    } else {
+      // Check if selected time is in the past
+      const [h, m] = departureTime.split(":").map(Number)
+      const selected = new Date()
+      selected.setHours(h, m, 0, 0)
+      if (selected < new Date()) {
+        setTimeError(true)
+        hasError = true
+      } else {
+        setTimeError(false)
+      }
+    }
+
+    if (hasError) return
+
+    // All valid — show confirmation popup
+    setShowPopup(true)
+  }
 
   // ─── Navigate to searching screen on confirm ───────────────────────────────
   const handleConfirm = () => {
-      console.log("departureTime value:", departureTime) // ADD THIS
-      console.log("formatted:", formatTime(departureTime)) // ADD THIS
+    console.log("departureTime value:", departureTime) // ADD THIS
+    console.log("formatted:", formatTime(departureTime)) // ADD THIS
     setShowPopup(false)
     navigate("/rider-searching", {
       state: {
@@ -197,12 +263,13 @@ const handleSearch = () => {
             center={userLocation}  // initial center (GPS coords)
             zoom={15}
             style={{ height: "220px", width: "100%" }}
-            dragging={false}        // disable drag — static preview map
-            zoomControl={false}
-            scrollWheelZoom={false}
-            doubleClickZoom={false}
+            dragging={true}         // ALLOW drag — interactive map
+            zoomControl={true}
+            scrollWheelZoom={true}
+            doubleClickZoom={true}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <MapEvents onLocationSelect={handleMapClick} />
 
             {/* Blue pin at user's GPS location */}
             <Marker position={userLocation} />
@@ -229,7 +296,7 @@ const handleSearch = () => {
             <h2>Post a ride?</h2>
             <div className="popup-actions">
               {/* Cancel closes popup */}
-              <button className="cancel-btn"  onClick={() => setShowPopup(false)}>
+              <button className="cancel-btn" onClick={() => setShowPopup(false)}>
                 Cancel
               </button>
               {/* Confirm navigates to searching screen */}
@@ -250,15 +317,18 @@ const handleSearch = () => {
           style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
         >
 
-          {/* Current Location — auto-filled from GPS + reverse geocode */}
+          {/* Current Location — auto-filled from GPS + reverse geocode, but editable if GPS is wrong */}
           <div>
             <label className="text-sm opacity-80">Current Location</label>
             <input
               value={locationName}
-              readOnly
-              className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${
-                locationError ? "border-red-500" : "border-transparent"
-              }`}
+              onChange={(e) => {
+                setLocationName(e.target.value)
+                setLocationError(false)
+              }}
+              onBlur={handleLocationBlur}
+              className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${locationError ? "border-red-500" : "border-transparent"
+                }`}
             />
             {locationError && (
               <p className="text-red-500 text-xs mt-1">Location not available</p>
@@ -276,25 +346,25 @@ const handleSearch = () => {
           </div>
 
           {/* Departure Time — time picker, no min restriction (validated on submit) */}
-<div>
-  <label className="text-sm opacity-80">Departure Time</label>
-  <input
-    type="time"
-    value={departureTime}
-    onChange={(e) => {
-      setDepartureTime(e.target.value)
-      setTimeError(false)
-    }}
-    className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${
-      timeError ? "border-red-500" : "border-transparent"
-    }`}
-  />
-  {timeError && (
-    <p className="text-red-500 text-xs mt-1">
-      Please select a valid future departure time
-    </p>
-  )}
-</div>
+          <div>
+            <label className="text-sm opacity-80">Departure Time</label>
+            <input
+              type="time"
+              value={departureTime}
+              min={getMinTime()}
+              onChange={(e) => {
+                setDepartureTime(e.target.value)
+                setTimeError(false)
+              }}
+              className={`w-full p-3 rounded-lg text-black bg-white mt-1 border ${timeError ? "border-red-500" : "border-transparent"
+                }`}
+            />
+            {timeError && (
+              <p className="text-red-500 text-xs mt-1">
+                Please select a valid future departure time
+              </p>
+            )}
+          </div>
 
           {/* Search button — validates then shows popup */}
           <button

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
-import { apiFetch } from "../lib/api"
+import { apiFetch } from "../../services/api"
 
 function RiderRegistration() {
   const navigate = useNavigate()
@@ -102,7 +102,7 @@ function RiderRegistration() {
               >
                 PROFILE
               </button>
-              
+
             </div>
           </aside>
         </div>

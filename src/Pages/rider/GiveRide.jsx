@@ -9,15 +9,15 @@ import {
   Polyline
 } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
-import "../utils/leafletIconFix"
-import { apiFetch } from "../lib/api"
- 
+import "../../utils/leafletIcons"
+import { apiFetch } from "../../services/api"
+
 
 function GiveRide() {
   const navigate = useNavigate()
   const [offers, setOffers] = useState([])
   const [menuOpen, setMenuOpen] = useState(false)
- 
+
   const [currentLoc, setCurrentLoc] = useState({ lat: 11.0168, lng: 76.9558 })
   const [pickupPoint, setPickupPoint] = useState(null)
   const [placeNames, setPlaceNames] = useState({})
@@ -51,12 +51,12 @@ function GiveRide() {
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
       (pos) => setCurrentLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
+      () => { },
       { enableHighAccuracy: true }
     )
   }, [])
 
- 
+
 
   useEffect(() => {
     setOffers([])
@@ -189,63 +189,63 @@ function GiveRide() {
 
   const [showFareInfo, setShowFareInfo] = useState(false)
 
- const confirmPostOffer = async () => {
-  const u = JSON.parse(localStorage.getItem("user") || "{}")
+  const confirmPostOffer = async () => {
+    const u = JSON.parse(localStorage.getItem("user") || "{}")
 
-  const payload = {
-    currentLat: currentLoc.lat,
-    currentLng: currentLoc.lng,
-    destination,
-    departureTime,
-    pickupLater,
-    ...(pickupPoint
-      ? { pickupLat: pickupPoint.lat, pickupLng: pickupPoint.lng }
-      : {})
-  }
-
-  const t = toast.loading("Posting ride...")
-
-  try {
-    const created = await apiFetch("/ride-offers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-
-    const offerId = created?.offer?.id || created?.offer?._id
-
-    toast.success("Ride posted", { id: t })
-
-    if (offerId) navigate(`/rider-wait/${offerId}`)
-
-  } catch {
-    toast.error("Failed to post ride", { id: t })
-  }
-
-  setPickupPoint(null)
-
-  if (saveForFuture) {
-    const saved = {
+    const payload = {
+      currentLat: currentLoc.lat,
+      currentLng: currentLoc.lng,
       destination,
       departureTime,
-      pickupLat: payload.pickupLat,
-      pickupLng: payload.pickupLng,
+      pickupLater,
+      ...(pickupPoint
+        ? { pickupLat: pickupPoint.lat, pickupLng: pickupPoint.lng }
+        : {})
     }
-    localStorage.setItem("savedRide", JSON.stringify(saved))
-  }
 
-  setDestination("")
-  setDestinationQuery("")
-  setDepartureTime("")
-  setSaveForFuture(false)
-  setPickupLater(false)
-  setPickupQuery("")
-  setIsPickupCurrent(false)
-  setPickupSuggestions([])
-  setDestinationSuggestions([])
-  setDestinationLatLng(null)
-  setShowFareInfo(false)
-}
+    const t = toast.loading("Posting ride...")
+
+    try {
+      const created = await apiFetch("/ride-offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const offerId = created?.offer?.id || created?.offer?._id
+
+      toast.success("Ride posted", { id: t })
+
+      if (offerId) navigate(`/rider-wait/${offerId}`)
+
+    } catch {
+      toast.error("Failed to post ride", { id: t })
+    }
+
+    setPickupPoint(null)
+
+    if (saveForFuture) {
+      const saved = {
+        destination,
+        departureTime,
+        pickupLat: payload.pickupLat,
+        pickupLng: payload.pickupLng,
+      }
+      localStorage.setItem("savedRide", JSON.stringify(saved))
+    }
+
+    setDestination("")
+    setDestinationQuery("")
+    setDepartureTime("")
+    setSaveForFuture(false)
+    setPickupLater(false)
+    setPickupQuery("")
+    setIsPickupCurrent(false)
+    setPickupSuggestions([])
+    setDestinationSuggestions([])
+    setDestinationLatLng(null)
+    setShowFareInfo(false)
+  }
 
 
   return (
@@ -318,7 +318,7 @@ function GiveRide() {
               >
                 LOGOUT
               </button>
-              
+
             </div>
           </aside>
         </div>
