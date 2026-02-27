@@ -99,7 +99,52 @@ export default function RideConfirmed() {
     distance          = "5.4",
     fare              = "120",
     departureTime     = "",
+    departureTimeRaw  = "",   // HH:mm (today) from RiderHome
   } = location.state || {}
+
+  // ── Real-time departure matching: unlock only when time reached ────────────
+  const [canDepart, setCanDepart]       = React.useState(!departureTimeRaw)
+  const [departLabel, setDepartLabel]   = React.useState(departureTime || "Now")
+
+  const computeTargetTime = React.useCallback(() => {
+    if (!departureTimeRaw) return null
+    const [hStr, mStr] = String(departureTimeRaw).split(":")
+    const h = Number(hStr)
+    const m = Number(mStr)
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0)
+  }, [departureTimeRaw])
+
+  useEffect(() => {
+    // If no raw time was provided, allow immediate departure
+    if (!departureTimeRaw) {
+      setCanDepart(true)
+      setDepartLabel(departureTime || "Now")
+      return
+    }
+
+    const update = () => {
+      const target = computeTargetTime()
+      if (!target) {
+        setCanDepart(true)
+        setDepartLabel("Now")
+        return
+      }
+      const now = new Date()
+      if (now >= target) {
+        setCanDepart(true)
+        setDepartLabel("Now")
+      } else {
+        setCanDepart(false)
+        setDepartLabel(departureTime || departureTimeRaw)
+      }
+    }
+
+    update()
+    const id = setInterval(update, 15000) // check every 15s
+    return () => clearInterval(id)
+  }, [departureTime, departureTimeRaw, computeTargetTime])
 
   // ── Create ride record once ───────────────────────────────────────────────
   useEffect(() => {
@@ -235,7 +280,7 @@ export default function RideConfirmed() {
           </div>
           <div className="rounded-xl p-3 text-center" style={{ background: "#FFF7ED", border: "1.5px solid #FED7AA" }}>
             <p className="text-xs text-gray-400 mb-0.5">Departs</p>
-            <p className="text-sm font-bold text-orange-600">{departureTime || "Now"}</p>
+            <p className="text-sm font-bold text-orange-600">{departLabel}</p>
           </div>
         </div>
 
@@ -251,7 +296,12 @@ export default function RideConfirmed() {
         </div>
 
         {/* Swipe → goes to RidePickup */}
-        <SwipeButton label="Swipe to Go Pick Up →" onSwipeComplete={handleSwipe} color="#16a34a" />
+        <SwipeButton
+          label={canDepart ? "Swipe to Go Pick Up →" : "Wait until departure time"}
+          onSwipeComplete={handleSwipe}
+          color="#16a34a"
+          disabled={!canDepart}
+        />
       </div>
     </div>
   )

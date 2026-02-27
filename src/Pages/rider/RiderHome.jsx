@@ -264,7 +264,12 @@ export default function RiderHome() {
   const handleConfirm = () => {
     setShowPopup(false)
     navigate("/rider-searching", {
-      state: { userLocation: coords, collegeLocation: collegeCoords, departureTime: formatTime(departureTime) },
+      state: {
+        userLocation:      coords,
+        collegeLocation:   collegeCoords,
+        departureTime:     formatTime(departureTime),
+        departureTimeRaw:  departureTime,   // HH:mm (24h) used for real-time matching
+      },
     })
   }
 

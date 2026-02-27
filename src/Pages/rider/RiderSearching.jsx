@@ -38,7 +38,12 @@ export default function RiderSearching() {
 
   const location = useLocation()
   const navigate = useNavigate()
-  const { userLocation, collegeLocation } = location.state || {}
+  const {
+    userLocation,
+    collegeLocation,
+    departureTime,
+    departureTimeRaw,
+  } = location.state || {}
 
   const [rideMatched, setRideMatched] = useState(false)
 
@@ -51,7 +56,9 @@ useEffect(() => {
       navigate("/ride-confirmed", {
         state: {
           userLocation,
-          collegeLocation
+          collegeLocation,
+          departureTime,
+          departureTimeRaw,
         }
       })
     }, 2500)

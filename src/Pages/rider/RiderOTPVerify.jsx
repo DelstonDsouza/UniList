@@ -43,7 +43,7 @@ const RiderOTPVerify = () => {
       }}
     >
       {/* Top Decoration */}
-      <div className="flex-shrink-0 flex flex-col items-center pt-14 pb-8 px-6">
+      <div className="shrink-0 flex flex-col items-center pt-14 pb-8 px-6">
         <div
           className="w-20 h-20 rounded-3xl flex items-center justify-center mb-5"
           style={{
@@ -75,7 +75,7 @@ const RiderOTPVerify = () => {
           style={{ background: '#F0F9FF', border: '1.5px solid #BFDBFE' }}
         >
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold text-white flex-shrink-0"
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold text-white shrink-0"
             style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)' }}
           >
             {ride.passengerName?.charAt(0) ?? 'P'}
