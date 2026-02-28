@@ -7,9 +7,10 @@ export default function Login() {
   const [step, setStep] = useState(1)
   const [phone, setPhone] = useState("")
   const [otp, setOtp] = useState("")
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  // setup invisible captcha
+  // Setup invisible reCAPTCHA
   const setupRecaptcha = () => {
     if (!window.recaptchaVerifier) {
       window.recaptchaVerifier = new RecaptchaVerifier(
@@ -20,14 +21,15 @@ export default function Login() {
     }
   }
 
-  // send otp
+  // Send OTP
   const sendOtp = async () => {
     if (phone.length !== 10) {
-      alert("Enter valid mobile number")
+      alert("Enter valid 10-digit mobile number")
       return
     }
 
     try {
+      setLoading(true)
       setupRecaptcha()
 
       const appVerifier = window.recaptchaVerifier
@@ -42,20 +44,49 @@ export default function Login() {
       window.confirmationResult = confirmation
       setStep(2)
     } catch (error) {
-      console.error(error)
+      console.error("OTP Send Error:", error)
       alert("OTP failed to send")
+    } finally {
+      setLoading(false)
     }
   }
 
-  // verify otp and route correctly
+  // Verify OTP and authenticate backend
   const verifyOtp = async () => {
     try {
+      setLoading(true)
+
+      // 1️⃣ Verify OTP with Firebase
       const result = await window.confirmationResult.confirm(otp)
       const firebaseUser = result.user
 
-      const phoneNumber = firebaseUser.phoneNumber.replace("+91", "")
+      // 2️⃣ Get Firebase ID Token
+      const idToken = await firebaseUser.getIdToken()
 
-      // save logged-in user
+      // 3️⃣ Send Firebase token to backend
+      const response = await fetch("http://localhost:5000/api/auth/firebase", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ idToken })
+      })
+
+      if (!response.ok) {
+        throw new Error("Backend authentication failed")
+      }
+
+      const data = await response.json()
+
+      if (!data.token) {
+        throw new Error("JWT not received from backend")
+      }
+
+      // 4️⃣ Store backend JWT
+      localStorage.setItem("token", data.token)
+
+      // 5️⃣ Store user info
+      const phoneNumber = firebaseUser.phoneNumber.replace("+91", "")
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -64,23 +95,20 @@ export default function Login() {
         })
       )
 
-      // check profile + role
+      // 6️⃣ Navigate based on profile/role
       const completed = localStorage.getItem(`profile_${phoneNumber}`)
       const role = localStorage.getItem(`role_${phoneNumber}`)
 
-      // new user → register page
       if (!completed) {
         navigate("/register-details")
         return
       }
 
-      // registered but role not selected
       if (!role) {
         navigate("/select-role")
         return
       }
 
-      // role exists → open respective home
       if (role === "rider") {
         navigate("/rider-home")
       } else {
@@ -88,19 +116,19 @@ export default function Login() {
       }
 
     } catch (error) {
-      console.error(error)
-      alert("Invalid OTP")
+      console.error("OTP Verification Error:", error)
+      alert("Invalid OTP or authentication failed")
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
     <div className="min-h-screen bg-gray-100 px-6 pt-6 flex flex-col justify-between">
 
-      {/* TOP HEADER */}
+      {/* Header */}
       <div>
         <div className="flex items-center justify-between mb-6">
-
-          {/* BACK BUTTON */}
           <button
             onClick={() => navigate("/")}
             className="text-2xl font-bold"
@@ -108,14 +136,12 @@ export default function Login() {
             ←
           </button>
 
-          {/* PROGRESS BAR */}
           <div className="flex items-center gap-3">
             <div className="flex gap-2">
               <div className={`w-12 h-1 rounded ${step >= 1 ? "bg-black" : "bg-gray-300"}`} />
               <div className={`w-12 h-1 rounded ${step >= 2 ? "bg-black" : "bg-gray-300"}`} />
               <div className={`w-12 h-1 rounded ${step >= 3 ? "bg-black" : "bg-gray-300"}`} />
             </div>
-
             <span className="text-lg font-semibold">
               {step}/3
             </span>
@@ -126,7 +152,6 @@ export default function Login() {
           Let's get you trip-ready!
         </h1>
 
-        {/* PHONE STEP */}
         {step === 1 && (
           <div className="bg-white p-5 rounded-2xl shadow-sm">
             <label className="text-gray-700 text-lg font-semibold">
@@ -147,7 +172,6 @@ export default function Login() {
           </div>
         )}
 
-        {/* OTP STEP */}
         {step === 2 && (
           <div className="bg-white p-5 rounded-2xl shadow-sm">
             <label className="text-gray-600 text-sm">
@@ -165,7 +189,7 @@ export default function Login() {
         )}
       </div>
 
-      {/* FOOTER */}
+      {/* Footer */}
       <div>
         <p className="text-center text-sm text-gray-500 mb-4">
           By clicking Continue, you agree to our <b>T&Cs</b>
@@ -174,23 +198,24 @@ export default function Login() {
         {step === 1 && (
           <button
             onClick={sendOtp}
+            disabled={loading}
             className="w-full bg-black text-white py-3 rounded-lg"
           >
-            Continue
+            {loading ? "Sending..." : "Continue"}
           </button>
         )}
 
         {step === 2 && (
           <button
             onClick={verifyOtp}
+            disabled={loading}
             className="w-full bg-black text-white py-3 rounded-lg"
           >
-            Continue
+            {loading ? "Verifying..." : "Continue"}
           </button>
         )}
       </div>
 
-      {/* Invisible recaptcha */}
       <div id="recaptcha-container"></div>
     </div>
   )

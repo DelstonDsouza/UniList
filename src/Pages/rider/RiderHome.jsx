@@ -18,9 +18,8 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-// ─── Sub-components (must live outside RiderHome) ─────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-// Flies map to new position whenever `position` changes
 function RecenterMap({ position }) {
   const map = useMap()
   const prev = useRef(null)
@@ -33,14 +32,13 @@ function RecenterMap({ position }) {
   return null
 }
 
-// Lets user tap the map to pick a custom location
 function MapClickHandler({ onPick }) {
   useMapEvents({ click: (e) => onPick([e.latlng.lat, e.latlng.lng]) })
   return null
 }
 
-// ─── Nominatim helpers (direct API calls — no proxy needed) ───────────────────
-const NOMINATIM = "https://nominatim.openstreetmap.org"
+// ─── Nominatim helpers ────────────────────────────────────────────────────────
+const NOMINATIM = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
 
 const extractShortName = (data) => {
@@ -98,18 +96,17 @@ const getMinTime = () => {
 export default function RiderHome() {
   const navigate = useNavigate()
 
-  const [coords,        setCoords]        = useState(null)          // [lat, lng]
-  const [locationName,  setLocationName]  = useState("")            // text box value
-  const [gpsStatus,     setGpsStatus]     = useState("loading")     // loading | ok | error
+  const [coords,        setCoords]        = useState(null)
+  const [locationName,  setLocationName]  = useState("")
+  const [gpsStatus,     setGpsStatus]     = useState("loading")
   const [departureTime, setDepartureTime] = useState("")
   const [timeError,     setTimeError]     = useState(false)
   const [locError,      setLocError]      = useState(false)
   const [showPopup,     setShowPopup]     = useState(false)
 
-  // autocomplete
-  const [suggestions,     setSuggestions]     = useState([])
-  const [showDrop,        setShowDrop]        = useState(false)
-  const [loadingSugg,     setLoadingSugg]     = useState(false)
+  const [suggestions,  setSuggestions]  = useState([])
+  const [showDrop,     setShowDrop]     = useState(false)
+  const [loadingSugg,  setLoadingSugg]  = useState(false)
 
   const isUserTyping = useRef(false)
   const debTimer     = useRef(null)
@@ -119,10 +116,10 @@ export default function RiderHome() {
   const collegeCoords = [12.872109642876621, 74.84534749009204]
   const collegeName   = "St Aloysius College, Mangalore"
 
-  // ─── Apply GPS coordinates → set map + reverse geocode ──────────────────
-  const applyCoords = useCallback(async (lat, lng, silent = false) => {
+  // ─── Apply GPS coordinates ───────────────────────────────────────────────
+  const applyCoords = useCallback(async (lat, lng) => {
     setCoords([lat, lng])
-    if (!silent) setLocationName("Getting address…")
+    setLocationName("Getting address…")
     const name = await reverseGeocode(lat, lng)
     isUserTyping.current = false
     setLocationName(name)
@@ -143,27 +140,35 @@ export default function RiderHome() {
     setGpsStatus("loading")
     setLocationName("Fetching your location…")
 
+    const onSuccess = (pos) => {
+      if (cancelled) return
+      applyCoords(pos.coords.latitude, pos.coords.longitude)
+    }
+
+    const onError = () => {
+      if (cancelled) return
+      setGpsStatus("error")
+      setLocationName("")
+    }
+
+    // Try high accuracy first, fall back to low accuracy
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (cancelled) return
-        applyCoords(pos.coords.latitude, pos.coords.longitude)
-      },
-      (err) => {
-        if (cancelled) return
-        // Don't alert — just show inline message
-        console.warn("GPS error:", err.message)
-        setGpsStatus("error")
-        setLocationName("") // let user type manually
+      onSuccess,
+      () => {
+        navigator.geolocation.getCurrentPosition(
+          onSuccess,
+          onError,
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        )
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     )
 
-    // Continuous watch — silently updates pin if user moves
+    // Continuous watch
     try {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (pos) => {
           if (cancelled || isUserTyping.current) return
-          // Silent update — don't reset text if user is editing
           setCoords([pos.coords.latitude, pos.coords.longitude])
         },
         () => {},
@@ -177,7 +182,7 @@ export default function RiderHome() {
     }
   }, [applyCoords])
 
-  // ─── Autocomplete while user types ──────────────────────────────────────
+  // ─── Autocomplete ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isUserTyping.current) return
     if (debTimer.current) clearTimeout(debTimer.current)
@@ -221,23 +226,31 @@ export default function RiderHome() {
     setLocError(false)
   }
 
-  // "Use current location" link
   const useCurrentLocation = () => {
     if (!navigator.geolocation) return
     setLocationName("Fetching your location…")
     setShowDrop(false)
+
+    const onSuccess = (pos) => applyCoords(pos.coords.latitude, pos.coords.longitude)
+    const onError = (err) => {
+      console.warn("GPS denied:", err.message)
+      setGpsStatus("error")
+      setLocationName("")
+    }
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => applyCoords(pos.coords.latitude, pos.coords.longitude),
-      (err) => {
-        console.warn("GPS denied:", err.message)
-        setGpsStatus("error")
-        setLocationName("")
+      onSuccess,
+      () => {
+        navigator.geolocation.getCurrentPosition(
+          onSuccess,
+          onError,
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+        )
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     )
   }
 
-  // Map tap to pick location
   const handleMapPick = async ([lat, lng]) => {
     setCoords([lat, lng])
     setLocationName("Getting address…")
@@ -268,7 +281,7 @@ export default function RiderHome() {
         userLocation:      coords,
         collegeLocation:   collegeCoords,
         departureTime:     formatTime(departureTime),
-        departureTimeRaw:  departureTime,   // HH:mm (24h) used for real-time matching
+        departureTimeRaw:  departureTime,
       },
     })
   }
@@ -352,12 +365,10 @@ export default function RiderHome() {
                   focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
               />
 
-              {/* Loading spinner inside input */}
               {loadingSugg && (
                 <span className="absolute right-3 top-3.5 text-gray-400 text-base animate-spin select-none">⟳</span>
               )}
 
-              {/* Suggestions dropdown */}
               {showDrop && suggestions.length > 0 && (
                 <ul className="absolute z-50 left-0 right-0 mt-1 bg-white text-black border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
                   {suggestions.map((s, i) => (
@@ -373,7 +384,6 @@ export default function RiderHome() {
               )}
             </div>
 
-            {/* GPS link */}
             <button type="button" onClick={useCurrentLocation}
               className="mt-2 text-xs text-teal-400 hover:text-teal-200 hover:underline transition">
               📍 Use current location

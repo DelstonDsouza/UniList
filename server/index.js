@@ -1,3 +1,4 @@
+import "dotenv/config"
 import express from "express"
 import cors from "cors"
 import path from "path"
@@ -6,7 +7,7 @@ import { initDB } from "./config/db.js"
 import logger from "./middleware/logger.js"
 import authRoutes from "./routes/auth.routes.js"
 import rideRoutes from "./routes/ride.routes.js"
-import riderRoutes from "./routes/rider.routes.js"
+import riderRoutes from "./routes/rider.routes.js"  
 
 // ── Initialize ──────────────────────────────────────────────────────────────
 const app = express()
@@ -34,13 +35,13 @@ app.get("/health", (_req, res) => {
 })
 
 // ── Routes ──────────────────────────────────────────────────────────────────
-app.use("/api", authRoutes)
-app.use("/api/ride-offers", rideRoutes)
+app.use("/api/auth", authRoutes)
+app.use("/api/rides", rideRoutes)
 app.use("/api/rider", riderRoutes)
 
 // ── Global error handler ────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
-  console.error("Unhandled error:", err?.stack || err)
+  console.error("Unhandled error:", err?.stack || err)  // ← already there?
   res.status(500).json({ detail: "Server error" })
 })
 

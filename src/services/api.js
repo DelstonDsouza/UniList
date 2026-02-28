@@ -6,6 +6,9 @@ export const clearToken = () => localStorage.removeItem("token")
 export async function apiFetch(path, options = {}) {
   const url = `${API_BASE}${path}`
   const token = getToken()
+    console.log("🔑 Token:", token)        // ← Add this
+  console.log("🌐 Fetching:", url)       // ← Add this
+  
   const headers = new Headers(options.headers || {})
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`)

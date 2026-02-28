@@ -1,271 +1,164 @@
-import { Router } from "express"
-import { isDBReady, mem } from "../config/db.js"
+// server/routes/ride.routes.js
+
+import express from "express"
 import Ride from "../models/Ride.js"
-import User from "../models/User.js"
+import * as rideService from "../services/ride.service.js"
 import auth from "../middleware/auth.js"
-import { nextId } from "../utils/helpers.js"
+import requireVerified from "../middleware/requireVerified.js"
 
-const router = Router()
+const router = express.Router()
 
-// ── GET /api/ride-offers ─────────────────────────────────────────────────────
-router.get("/", auth, async (req, res) => {
-    try {
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const offers = mem.rides.filter(r => r.riderUid !== req.user.uid && (r.status || "pending") === "pending")
-            return res.json({ offers })
-        } else {
-            const offers = await Ride.find({ riderUid: { $ne: req.user.uid }, status: "pending" }).sort({ createdAt: -1 }).lean()
-            return res.json({ offers })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
-// ── GET /api/ride-offers/:id ─────────────────────────────────────────────────
-router.get("/:id", auth, async (req, res) => {
-    try {
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const ride = mem.rides.find(r => r.id === req.params.id)
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            return res.json({ offer: ride })
-        } else {
-            let ride = await Ride.findOne({ id: req.params.id }).lean()
-            if (!ride) {
-                try {
-                    ride = await Ride.findById(req.params.id).lean()
-                } catch { }
-            }
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+// ─────────────────────────────────────────────────────────────
+// PASSENGER ROUTES
+// ─────────────────────────────────────────────────────────────
 
-// ── POST /api/ride-offers ────────────────────────────────────────────────────
-router.post("/", auth, async (req, res) => {
-    try {
-        const { destination, departureTime, pickupLater, pickupLat, pickupLng, currentLat, currentLng } = req.body || {}
-        if (!destination || !departureTime) return res.status(400).json({ detail: "Missing destination or time" })
+router.get("/nearby", auth, wrap(async (req, res) => {
+  const { lat, lng } = req.query
+  const collegeId = req.user.universityId
 
-        let riderName = null
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const u = mem.users.get(req.user.email)
-            riderName = u ? `${u.firstName || ""} ${u.lastName || ""}`.trim() : ""
-            const ride = {
-                id: nextId(),
-                riderUid: req.user.uid,
-                riderName,
-                destination,
-                departureTime,
-                pickupLater: !!pickupLater,
-                pickupLat: typeof pickupLat === "number" ? pickupLat : null,
-                pickupLng: typeof pickupLng === "number" ? pickupLng : null,
-                currentLat: typeof currentLat === "number" ? currentLat : null,
-                currentLng: typeof currentLng === "number" ? currentLng : null,
-                status: "pending",
-                createdAt: new Date(),
-            }
-            mem.rides.push(ride)
-            return res.json({ offer: ride })
-        } else {
-            const u = await User.findById(req.user.uid)
-            riderName = u ? `${u.firstName || ""} ${u.lastName || ""}`.trim() : ""
-            const ride = await Ride.create({
-                id: nextId(),
-                riderUid: req.user.uid,
-                riderName,
-                destination,
-                departureTime,
-                pickupLater: !!pickupLater,
-                pickupLat: typeof pickupLat === "number" ? pickupLat : null,
-                pickupLng: typeof pickupLng === "number" ? pickupLng : null,
-                currentLat: typeof currentLat === "number" ? currentLat : null,
-                currentLng: typeof currentLng === "number" ? currentLng : null,
-                status: "pending",
-            })
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+  console.log("nearby req.user:", JSON.stringify(req.user))
+  console.log("lat:", lat, "lng:", lng)
 
-// ── POST /api/ride-offers/:id/accept ─────────────────────────────────────────
-router.post("/:id/accept", auth, async (req, res) => {
-    try {
-        const { passengerName, passengerPhone, passengerLat, passengerLng } = req.body || {}
-        if (!passengerName || !passengerPhone) return res.status(400).json({ detail: "Missing passenger details" })
+  if (!lat || !lng) {
+    return res.status(400).json({
+      success: false,
+      error: { code: "MISSING_COORDS", message: "lat and lng query params required" },
+    })
+  }
 
-        const applyAccept = (r) => {
-            if (!r) return null
-            if (r.riderUid === req.user.uid) return "own_ride"
-            if ((r.status || "pending") !== "pending") return "finalized"
-            r.passengerUid = req.user.uid
-            r.passengerName = passengerName
-            r.passengerPhone = passengerPhone
-            r.passengerLat = typeof passengerLat === "number" ? passengerLat : null
-            r.passengerLng = typeof passengerLng === "number" ? passengerLng : null
-            r.status = "accepted"
-            return r
-        }
+  const rides = await rideService.getNearbyRides(
+    parseFloat(lat), parseFloat(lng), collegeId
+  )
+  res.json({ success: true, data: { rides } })
+}))
 
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const ride = mem.rides.find(r => r.id === req.params.id)
-            const result = applyAccept(ride)
-            if (result === "own_ride") return res.status(403).json({ detail: "Cannot book own ride" })
-            if (result === "finalized") return res.status(409).json({ detail: "Ride status is finalized" })
-            return res.json({ offer: ride })
-        } else {
-            const ride = await Ride.findOne({ id: req.params.id })
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            const result = applyAccept(ride)
-            if (result === "own_ride") return res.status(403).json({ detail: "Cannot book own ride" })
-            if (result === "finalized") return res.status(409).json({ detail: "Ride status is finalized" })
-            await ride.save()
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+router.post("/:id/request", auth, requireVerified, wrap(async (req, res) => {
+  const { passengerLat, passengerLng, name, phone } = req.body
+  const rideId    = req.params.id
+  const collegeId = req.user.universityId
 
-// ── POST /api/ride-offers/:id/reject ─────────────────────────────────────────
-router.post("/:id/reject", auth, async (req, res) => {
-    try {
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const ride = mem.rides.find(r => r.id === req.params.id)
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid === req.user.uid) return res.status(403).json({ detail: "Cannot reject own ride" })
-            if ((ride.status || "pending") !== "pending") return res.status(409).json({ detail: "Ride status is finalized" })
-            ride.status = "rejected"
-            return res.json({ offer: ride })
-        } else {
-            const ride = await Ride.findOne({ id: req.params.id })
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid === req.user.uid) return res.status(403).json({ detail: "Cannot reject own ride" })
-            if ((ride.status || "pending") !== "pending") return res.status(409).json({ detail: "Ride status is finalized" })
-            ride.status = "rejected"
-            await ride.save()
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+  if (!passengerLat || !passengerLng) {
+    return res.status(400).json({
+      success: false,
+      error: { code: "MISSING_COORDS", message: "passengerLat and passengerLng required" },
+    })
+  }
+  if (!name || !phone) {
+    return res.status(400).json({
+      success: false,
+      error: { code: "MISSING_FIELDS", message: "name and phone required" },
+    })
+  }
 
-// ── POST /api/ride-offers/:id/start ──────────────────────────────────────────
-router.post("/:id/start", auth, async (req, res) => {
-    try {
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const ride = mem.rides.find(r => r.id === req.params.id)
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid !== req.user.uid) return res.status(403).json({ detail: "Only rider can start" })
-            if ((ride.status || "pending") !== "accepted" || !ride.passengerUid) {
-                return res.status(409).json({ detail: "Cannot start until passenger joins" })
-            }
-            ride.status = "ongoing"
-            return res.json({ offer: ride })
-        } else {
-            const ride = await Ride.findOne({ id: req.params.id })
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid !== req.user.uid) return res.status(403).json({ detail: "Only rider can start" })
-            if ((ride.status || "pending") !== "accepted" || !ride.passengerUid) {
-                return res.status(409).json({ detail: "Cannot start until passenger joins" })
-            }
-            ride.status = "ongoing"
-            await ride.save()
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+  const ride = await rideService.lockRide(
+    rideId,
+    {
+      userId: req.user._id,
+      name:   name  || req.user.firstName,
+      phone:  phone || req.user.phone,
+      lat:    parseFloat(passengerLat),
+      lng:    parseFloat(passengerLng),
+    },
+    collegeId
+  )
 
-// ── POST /api/ride-offers/:id/cancel ─────────────────────────────────────────
-router.post("/:id/cancel", auth, async (req, res) => {
-    try {
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const ride = mem.rides.find(r => r.id === req.params.id)
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid !== req.user.uid) return res.status(403).json({ detail: "Only rider can cancel" })
-            ride.status = "cancelled"
-            return res.json({ offer: ride })
-        } else {
-            const ride = await Ride.findOne({ id: req.params.id })
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid !== req.user.uid) return res.status(403).json({ detail: "Only rider can cancel" })
-            ride.status = "cancelled"
-            await ride.save()
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+  res.json({ success: true, data: { ride } })
+}))
 
-// ── POST /api/ride-offers/:id/complete ───────────────────────────────────────
-router.post("/:id/complete", auth, async (req, res) => {
-    try {
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const ride = mem.rides.find(r => r.id === req.params.id)
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid !== req.user.uid) return res.status(403).json({ detail: "Only rider can complete" })
-            ride.status = "completed"
-            return res.json({ offer: ride })
-        } else {
-            const ride = await Ride.findOne({ id: req.params.id })
-            if (!ride) return res.status(404).json({ detail: "Not found" })
-            if (ride.riderUid !== req.user.uid) return res.status(403).json({ detail: "Only rider can complete" })
-            ride.status = "completed"
-            await ride.save()
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
-})
+router.get("/active", auth, requireVerified, wrap(async (req, res) => {
+  const ride = await rideService.getPassengerActiveRide(req.user._id)
+  res.json({ success: true, data: { ride } })
+}))
 
-// ── PATCH /api/ride-offers/:id ───────────────────────────────────────────────
-router.patch("/:id", auth, async (req, res) => {
-    try {
-        const updates = req.body || {}
-        const apply = (ride) => {
-            if (!ride) return "not_found"
-            if (ride.riderUid !== req.user.uid) return "forbidden"
-            if ((ride.status || "pending") !== "pending") return "finalized"
-            const fields = ["destination", "departureTime", "pickupLater", "pickupLat", "pickupLng", "currentLat", "currentLng"]
-            fields.forEach((f) => {
-                if (f in updates) {
-                    const v = updates[f]
-                    ride[f] = typeof v === "number" ? v : v
-                }
-            })
-            return ride
-        }
+// ─────────────────────────────────────────────────────────────
+// RIDER ROUTES
+// ─────────────────────────────────────────────────────────────
 
-        if (!isDBReady() || String(req.user.uid).startsWith("mem:")) {
-            const ride = mem.rides.find(r => r.id === req.params.id)
-            const result = apply(ride)
-            if (result === "not_found") return res.status(404).json({ detail: "Not found" })
-            if (result === "forbidden") return res.status(403).json({ detail: "Only rider can edit" })
-            if (result === "finalized") return res.status(409).json({ detail: "Cannot edit after acceptance" })
-            return res.json({ offer: ride })
-        } else {
-            const ride = await Ride.findOne({ id: req.params.id })
-            const result = apply(ride)
-            if (result === "not_found") return res.status(404).json({ detail: "Not found" })
-            if (result === "forbidden") return res.status(403).json({ detail: "Only rider can edit" })
-            if (result === "finalized") return res.status(409).json({ detail: "Cannot edit after acceptance" })
-            await ride.save()
-            return res.json({ offer: ride })
-        }
-    } catch (err) {
-        return res.status(500).json({ detail: "Server error" })
-    }
+router.post("/", auth, requireVerified, wrap(async (req, res) => {
+  const { riderName, riderPhone, scooterNumber, pickupLat, pickupLng, currentLat, currentLng } = req.body
+
+  if (!pickupLat || !pickupLng || !currentLat || !currentLng) {
+    return res.status(400).json({
+      success: false,
+      error: { code: "MISSING_COORDS", message: "Location coordinates required" },
+    })
+  }
+
+  const existing = await Ride.findOne({
+    riderId: req.user._id,
+    status: { $in: ["pending", "locked", "ongoing"] },
+  })
+  if (existing) {
+    return res.status(400).json({
+      success: false,
+      error: { code: "ACTIVE_RIDE_EXISTS", message: "Complete your current ride before posting a new one" },
+    })
+  }
+
+  const ride = await Ride.create({
+    collegeId:    req.user.universityId,
+    riderId:      req.user._id,
+    riderName:    riderName  || req.user.firstName,
+    riderPhone:   riderPhone || req.user.phone,
+    scooterNumber,
+    currentLocation: { type: "Point", coordinates: [parseFloat(currentLng), parseFloat(currentLat)] },
+    pickupLocation:  { type: "Point", coordinates: [parseFloat(pickupLng),   parseFloat(pickupLat)]  },
+    status: "pending",
+  })
+
+  res.status(201).json({ success: true, data: { ride } })
+}))
+
+router.get("/my", auth, wrap(async (req, res) => {
+  const rides = await Ride.find({ riderId: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .lean()
+  res.json({ success: true, data: { rides } })
+}))
+
+router.post("/:id/start", auth, requireVerified, wrap(async (req, res) => {
+  const ride = await rideService.startRide(req.params.id, req.user._id)
+  res.json({ success: true, data: { ride } })
+}))
+
+router.post("/:id/complete", auth, requireVerified, wrap(async (req, res) => {
+  const ride = await rideService.completeRide(req.params.id, req.user._id, req.body.paymentMethod)
+  res.json({ success: true, data: { ride } })
+}))
+
+router.post("/:id/reject-passenger", auth, requireVerified, wrap(async (req, res) => {
+  const ride = await rideService.rejectPassenger(req.params.id, req.user._id)
+  res.json({ success: true, data: { ride } })
+}))
+
+router.patch("/:id/location", auth, wrap(async (req, res) => {
+  const { lat, lng } = req.body
+  if (!lat || !lng) {
+    return res.status(400).json({ success: false, error: { code: "MISSING_COORDS" } })
+  }
+  await Ride.findOneAndUpdate(
+    { _id: req.params.id, riderId: req.user._id },
+    { $set: { currentLocation: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] } } }
+  )
+  res.json({ success: true })
+}))
+
+// ─────────────────────────────────────────────────────────────
+// Error handler
+// ─────────────────────────────────────────────────────────────
+router.use((err, req, res, _next) => {
+  console.error("RIDE ROUTE ERROR:", err?.stack || err)
+  const status = err.status || 500
+  res.status(status).json({
+    success: false,
+    error: {
+      code:    err.code    || "SERVER_ERROR",
+      message: err.message || "Something went wrong",
+    },
+  })
 })
 
 export default router
-

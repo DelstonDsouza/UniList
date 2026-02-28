@@ -87,7 +87,6 @@ import React from "react"
 export default function RideConfirmed() {
   const location = useLocation()
   const navigate  = useNavigate()
-  const { ride, setRide } = useRide()
 
   const {
     userLocation,
@@ -147,36 +146,29 @@ export default function RideConfirmed() {
   }, [departureTime, departureTimeRaw, computeTargetTime])
 
   // ── Create ride record once ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!userLocation || !collegeLocation || ride.rideId) return
-    const user = JSON.parse(localStorage.getItem("user") || "{}")
-    createRide({
-      riderId:   user.uid || user.id || "unknown",
-      riderName: user.name || user.displayName || "Rider",
-      origin:      { lat: userLocation[0],    lng: userLocation[1],    label: "Your location" },
-      destination: { lat: collegeLocation[0], lng: collegeLocation[1], label: "College" },
-      departureTime,
-    })
-      .then(({ rideId, otp }) => {
-        setRide({
-          rideId,
-          otp,
-          status:          "matched",
-          origin:          { lat: userLocation[0],    lng: userLocation[1] },
-          destination:     { lat: collegeLocation[0], lng: collegeLocation[1], label: "College" },
-          passengerName,
-          passengerRating: Number(passengerRating),
-          passengerPickup: passengerPickup
-            ? { lat: passengerPickup[0], lng: passengerPickup[1], label: passengerLocation }
-            : null,
-          distance:   Number(distance),
-          fare:       Number(fare),
-          departureTime,
-        })
-      })
-      .catch(console.error)
-  }, []) // eslint-disable-line
+useEffect(() => {
+  if (!userLocation || !collegeLocation) return
 
+  const user = JSON.parse(localStorage.getItem("user") || "{}")
+
+  createRide({
+    riderId: user.uid || user.id || "unknown",
+    riderName: user.name || user.displayName || "Rider",
+    origin: {
+      lat: userLocation[0],
+      lng: userLocation[1],
+      label: "Your location",
+    },
+    destination: {
+      lat: collegeLocation[0],
+      lng: collegeLocation[1],
+      label: "College",
+    },
+    departureTime,
+  })
+  .catch(console.error)
+
+}, [userLocation, collegeLocation, departureTime])
   // ── Swipe → RidePickup, pass ALL state forward ────────────────────────────
   const handleSwipe = useCallback(() => {
     navigate("/ride-pickup", {
