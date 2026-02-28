@@ -1,26 +1,177 @@
 // src/pages/passenger/PassengerDashboard.jsx
-// CREATE this new file — the complete passenger experience
-// Route: /dashboard  (add to App.jsx — see instructions at bottom)
-
-import { useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import toast from "react-hot-toast"
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
-import "../../utils/leafletIconFix"
+import toast from "react-hot-toast"
 
-import { RideProvider, useRide } from "../../context/RideContext"
-import RiderCard from "./RiderCard"
+import { useRide } from "../../context/RideContext"
 import FareRevealSheet from "./FareRevealSheet"
 import ActiveRidePanel from "./ActiveRidePanel"
 import RideComplete from "./RideComplete"
 
-// ─── Inner component uses context ──────────────────────────
-function PassengerDashboardInner() {
-  const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [passengerName, setPassengerName] = useState("")
-  const [passengerPhone, setPassengerPhone] = useState("")
+import homeIcon    from "../../assets/icons/home-icon.svg"
+import exploreIcon from "../../assets/icons/explore-icon.svg"
+import profileIcon from "../../assets/icons/profile-icon.svg"
+
+// ── Fix Leaflet marker icons ──────────────────────────────────────────────────
+import L from "leaflet"
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+})
+
+// ── Recenter map ──────────────────────────────────────────────────────────────
+function RecenterMap({ position }) {
+  const map = useMap()
+  const prev = useRef(null)
+  useEffect(() => {
+    if (!position) return
+    if (prev.current?.[0] === position[0] && prev.current?.[1] === position[1]) return
+    prev.current = position
+    map.flyTo(position, 15, { animate: true, duration: 1.0 })
+  }, [position, map])
+  return null
+}
+
+// ── Star rating display ───────────────────────────────────────────────────────
+function Stars({ rating = 0 }) {
+  const val = parseFloat(rating) || 0
+  return (
+    <span className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((s) => (
+        <svg key={s} className={`w-3 h-3 ${s <= Math.round(val) ? "text-amber-400" : "text-gray-300"}`}
+          fill="currentColor" viewBox="0 0 20 20">
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+        </svg>
+      ))}
+      <span className="text-xs text-gray-500 ml-1">{val > 0 ? val.toFixed(1) : "—"}</span>
+    </span>
+  )
+}
+
+// ── Haversine distance ────────────────────────────────────────────────────────
+function distKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+// ── Individual rider card ─────────────────────────────────────────────────────
+function RiderCard({ ride, userLocation, onRequest, requesting }) {
+  const [confirming, setConfirming] = useState(false)
+  const [name,  setName]  = useState("")
+  const [phone, setPhone] = useState("")
+
+  const riderLat = ride.currentLocation?.coordinates?.[1]
+  const riderLng = ride.currentLocation?.coordinates?.[0]
+  const dist = userLocation && riderLat && riderLng
+    ? distKm(userLocation[0], userLocation[1], riderLat, riderLng)
+    : null
+
+  // Pickup area label
+  const pickupArea = ride.pickupArea || ride.locationName || ride.collegeName || "—"
+
+  const handleRequest = () => {
+    if (!name.trim() || !phone.trim()) {
+      toast.error("Enter your name and phone to request")
+      return
+    }
+    onRequest(ride._id, name, phone)
+  }
+
+  return (
+    <div className="min-w-[280px] max-w-[280px] bg-white rounded-2xl shadow-md border border-gray-100 p-4 flex flex-col gap-3 snap-start">
+      {/* Top row */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-base">
+            {(ride.riderName || "R")[0].toUpperCase()}
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 text-sm leading-tight">{ride.riderName || "—"}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{ride.scooterNumber || ride.vehicleNumber || "—"}</p>
+          </div>
+        </div>
+        {dist !== null && (
+          <span className="text-xs font-semibold px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200 whitespace-nowrap">
+            {dist.toFixed(1)} km
+          </span>
+        )}
+      </div>
+
+      {/* Rating */}
+      <Stars rating={ride.rating || ride.ratingAvg || 0} />
+
+      {/* Pickup area */}
+      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+        <span>📌</span>
+        <span className="truncate">{pickupArea}</span>
+      </div>
+
+      {/* Fare hint */}
+      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">
+        ⚠ Fare shown only after requesting · Cannot cancel
+      </div>
+
+      {/* Action */}
+      {!confirming ? (
+        <button
+          onClick={() => setConfirming(true)}
+          disabled={requesting}
+          className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 active:scale-95 transition disabled:opacity-50"
+        >
+          Request Ride
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            placeholder="Your phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <p className="text-xs text-center text-red-500">Cannot cancel once confirmed!</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setConfirming(false)}
+              className="flex-1 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50 transition"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleRequest}
+              disabled={requesting}
+              className="flex-1 py-2 rounded-xl bg-teal-500 text-white text-sm font-semibold hover:bg-teal-600 transition disabled:opacity-50"
+            >
+              {requesting ? "Locking…" : "Confirm"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+export default function PassengerDashboard() {
+  const navigate  = useNavigate()
+  const scrollRef = useRef(null)
 
   const {
     viewState,
@@ -28,253 +179,220 @@ function PassengerDashboardInner() {
     loadingRiders,
     userLocation,
     locationError,
+    requestRide,
+    requestingRideId,
   } = useRide()
 
+  const [search,   setSearch]   = useState("")
+  const [navTab,   setNavTab]   = useState("home")
+
+  // ── Filter riders by search ───────────────────────────────────────────────
+  const filtered = search.trim().length > 0
+    ? nearbyRiders.filter((r) => {
+        const haystack = [
+          r.locationName, r.pickupArea, r.collegeName,
+          r.riderName,    r.scooterNumber,
+        ].join(" ").toLowerCase()
+        return haystack.includes(search.toLowerCase())
+      })
+    : nearbyRiders
+
+  // ── Request handler ───────────────────────────────────────────────────────
+  const handleRequest = useCallback(async (rideId, name, phone) => {
+    try {
+      await requestRide(rideId, name, phone)
+    } catch (err) {
+      toast.error(err.message || "Failed to request ride")
+    }
+  }, [requestRide])
+
+  // ── Completed / active views ──────────────────────────────────────────────
+  if (viewState === "completed") return (
+    <div className="min-h-screen bg-gray-100 pb-24">
+      <RideComplete />
+      <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
+    </div>
+  )
+
+  if (viewState === "fare_reveal") return (
+    <div className="min-h-screen bg-gray-100 pb-24">
+      <FareRevealSheet />
+      <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
+    </div>
+  )
+
+  if (viewState === "waiting" || viewState === "ongoing") return (
+    <div className="min-h-screen bg-gray-100 pb-24 px-4 pt-4">
+      <ActiveRidePanel />
+      <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
+    </div>
+  )
+
+  // ── Discovery view ────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex bg-slate-100 dark:bg-slate-950">
+    <div className="min-h-screen bg-gray-100 pb-24">
 
-      {/* ── Hamburger ── */}
-      <button
-        className="fixed left-4 top-4 z-50 p-3 rounded-xl bg-white dark:bg-slate-800 border shadow hover:bg-slate-50 dark:hover:bg-slate-700"
-        onClick={() => setMenuOpen(true)}
-        aria-label="Open menu"
-      >
-        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white mb-1" />
-        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white mb-1" />
-        <span className="block w-5 h-0.5 bg-slate-900 dark:bg-white" />
-      </button>
+      {/* HEADER */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <button className="text-2xl leading-none">☰</button>
+        <h1 className="text-lg font-semibold text-gray-900">Welcome, Passenger !</h1>
+        <div className="w-9 h-9 bg-teal-400 rounded-full" />
+      </div>
 
-      {/* ── Slide-out Menu ── */}
-      {menuOpen && (
-        <div className="fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 px-6 pt-16 pb-6">
-            <h2 className="text-2xl font-extrabold mb-6 text-white">Menu</h2>
-            <div className="divide-y divide-slate-700">
-              <button
-                onClick={() => setMenuOpen(false)}
-                className="w-full text-left px-4 py-3 font-medium text-white hover:bg-slate-800 transition"
-              >
-                PASSENGER
-              </button>
-              <button
-                onClick={() => { setMenuOpen(false); navigate("/giveride") }}
-                className="w-full text-left px-4 py-3 font-medium text-white hover:bg-slate-800 transition"
-              >
-                RIDER
-              </button>
-              <button
-                onClick={() => { setMenuOpen(false); toast.success("History coming soon") }}
-                className="w-full text-left px-4 py-3 font-medium text-white hover:bg-slate-800 transition"
-              >
-                HISTORY
-              </button>
-              <button
-                onClick={() => { setMenuOpen(false); toast.success("Contact coming soon") }}
-                className="w-full text-left px-4 py-3 font-medium text-white hover:bg-slate-800 transition"
-              >
-                CONTACT
-              </button>
-              <button
-                onClick={() => { setMenuOpen(false); toast.success("Profile coming soon") }}
-                className="w-full text-left px-4 py-3 font-medium text-white hover:bg-slate-800 transition"
-              >
-                PROFILE
-              </button>
-              <button
-                onClick={() => setMenuOpen(false)}
-                className="w-full text-left mt-4 px-4 py-3 rounded-xl bg-slate-800 font-medium text-white transition"
-              >
-                Close
-              </button>
-            </div>
-          </aside>
-        </div>
-      )}
-
-      {/* ── Main Content ── */}
-      <main className="flex-1 pt-16 px-4 pb-8 sm:px-8">
-
-        {/* ════════════════════════════════════════
-            VIEW: COMPLETED
-        ════════════════════════════════════════ */}
-        {viewState === "completed" && <RideComplete />}
-
-        {/* ════════════════════════════════════════
-            VIEW: WAITING / ONGOING (active ride)
-        ════════════════════════════════════════ */}
-        {(viewState === "waiting" || viewState === "ongoing") && <ActiveRidePanel />}
-
-        {/* ════════════════════════════════════════
-            VIEW: FARE REVEAL (modal overlay)
-        ════════════════════════════════════════ */}
-        {viewState === "fare_reveal" && <FareRevealSheet />}
-
-        {/* ════════════════════════════════════════
-            VIEW: DISCOVERY (main listing)
-        ════════════════════════════════════════ */}
-        {viewState === "discovery" && (
-          <div className="max-w-6xl mx-auto">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-              Find a Ride
-            </h1>
-
-            {/* GPS error banner */}
-            {locationError && (
-              <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
-                📍 {locationError}
-              </div>
-            )}
-
-            <div className="grid gap-6 lg:grid-cols-3">
-
-              {/* ── Left: Map + Rider List ── */}
-              <div className="lg:col-span-2 space-y-4">
-
-                {/* Destination chip */}
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm text-slate-600 dark:text-slate-400">
-                  <span className="text-red-500">●</span>
-                  <span className="font-medium text-slate-800 dark:text-white">Destination:</span>
-                  St Joseph Engineering College
-                  <span className="ml-auto text-xs text-slate-400">(fixed)</span>
-                </div>
-
-                {/* Mini map */}
-                <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 h-48">
-                  {userLocation ? (
-                    <MapContainer
-                      center={userLocation}
-                      zoom={14}
-                      style={{ height: "100%", width: "100%" }}
-                    >
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                      <Marker position={userLocation}>
-                        <Popup>📍 Your location</Popup>
-                      </Marker>
-                      {nearbyRiders.map((r) => {
-                        const lat = r.currentLocation?.coordinates?.[1]
-                        const lng = r.currentLocation?.coordinates?.[0]
-                        if (!lat || !lng) return null
-                        return (
-                          <Marker key={r._id} position={[lat, lng]}>
-                            <Popup>🛵 {r.riderName}</Popup>
-                          </Marker>
-                        )
-                      })}
-                    </MapContainer>
-                  ) : (
-                    <div className="h-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 text-sm">
-                      Waiting for GPS...
-                    </div>
-                  )}
-                </div>
-
-                {/* Rider list */}
-                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">
-                    Available Riders{" "}
-                    <span className="text-slate-400 font-normal text-sm">
-                      within 3 km
-                    </span>
-                  </h3>
-
-                  {/* Loading skeletons */}
-                  {loadingRiders && (
-                    <div className="space-y-3 animate-pulse">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="h-24 rounded-xl bg-slate-100 dark:bg-slate-800" />
-                      ))}
-                    </div>
-                  )}
-
-                  {!loadingRiders && nearbyRiders.length === 0 && (
-                    <div className="py-10 text-center">
-                      <div className="text-4xl mb-2">🛵</div>
-                      <p className="text-slate-500 text-sm">No riders available within 3 km right now.</p>
-                      <p className="text-slate-400 text-xs mt-1">Check back in a few minutes.</p>
-                    </div>
-                  )}
-
-                  {!loadingRiders && nearbyRiders.length > 0 && (
-                    <div className="space-y-3">
-                      {nearbyRiders.map((ride) => (
-                        <RiderCard
-                          key={ride._id}
-                          ride={ride}
-                          passengerName={passengerName}
-                          passengerPhone={passengerPhone}
-                          onNameChange={setPassengerName}
-                          onPhoneChange={setPassengerPhone}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Right: Passenger Details Form ── */}
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 h-fit">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-4">
-                  Your Details
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                  Fill in your details before requesting a ride.
-                </p>
-                <div className="space-y-3">
-                  <input
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
-                    placeholder="Your Name"
-                    value={passengerName}
-                    onChange={(e) => setPassengerName(e.target.value)}
-                  />
-                  <input
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
-                    placeholder="Your Phone"
-                    type="tel"
-                    value={passengerPhone}
-                    onChange={(e) => setPassengerPhone(e.target.value)}
-                  />
-                </div>
-
-                <div className="mt-5 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 space-y-2">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    How it works
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    1. Fill your name &amp; phone above
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    2. Click "Request Ride" on any rider card
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    3. Fare is revealed after request — pay rider directly
-                  </p>
-                  <p className="text-xs text-red-500 mt-1">
-                    ⚠ Rides cannot be cancelled once requested
-                  </p>
-                </div>
-
-                {/* Fare formula */}
-                <div className="mt-4 p-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-xs text-slate-400 text-center">
-                  Fare = ₹5/km · Minimum ₹20
-                </div>
-              </div>
-
-            </div>
+      {/* MAP */}
+      <div className="mx-4 rounded-3xl overflow-hidden shadow-sm" style={{ height: 200 }}>
+        {userLocation ? (
+          <MapContainer center={userLocation} zoom={15} style={{ height: "100%", width: "100%" }}
+            dragging zoomControl scrollWheelZoom={false}>
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+            />
+            <Marker position={userLocation} />
+            <RecenterMap position={userLocation} />
+            {/* Rider pins */}
+            {nearbyRiders.map((r) => {
+              const lat = r.currentLocation?.coordinates?.[1]
+              const lng = r.currentLocation?.coordinates?.[0]
+              if (!lat || !lng) return null
+              return <Marker key={r._id} position={[lat, lng]} />
+            })}
+          </MapContainer>
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center bg-slate-100 text-gray-400 text-sm gap-2">
+            <span className="text-3xl animate-bounce">📍</span>
+            <span>{locationError || "Fetching your location…"}</span>
           </div>
         )}
-      </main>
+      </div>
+
+      {/* RIDERS CARD PANEL */}
+      <div className="mx-4 mt-4 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+
+        {/* Panel header + search */}
+        <div className="px-4 pt-4 pb-3">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-semibold text-gray-900 text-sm">Available Riders</h2>
+              <p className="text-xs text-gray-400">within 3 km of you</p>
+            </div>
+            {!loadingRiders && (
+              <span className="text-xs font-semibold px-2 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                {filtered.length} found
+              </span>
+            )}
+          </div>
+
+          {/* Search bar */}
+          <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2.5">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by location (e.g. Vamanjoor)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="bg-transparent flex-1 text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Swipeable cards row */}
+        <div className="pb-4">
+          {loadingRiders && (
+            <div className="flex gap-3 px-4 overflow-hidden">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="min-w-[280px] h-52 rounded-2xl bg-gray-100 animate-pulse flex-shrink-0" />
+              ))}
+            </div>
+          )}
+
+          {!loadingRiders && filtered.length === 0 && (
+            <div className="py-10 text-center px-4">
+              <div className="text-4xl mb-2">🛵</div>
+              <p className="text-gray-500 text-sm font-medium">
+                {search ? `No riders found near "${search}"` : "No riders available within 3 km"}
+              </p>
+              <p className="text-gray-400 text-xs mt-1">Check back in a few minutes</p>
+            </div>
+          )}
+
+          {!loadingRiders && filtered.length > 0 && (
+            <div
+              ref={scrollRef}
+              className="flex gap-3 px-4 overflow-x-auto snap-x snap-mandatory pb-1"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {filtered.map((ride) => (
+                <RiderCard
+                  key={ride._id}
+                  ride={ride}
+                  userLocation={userLocation}
+                  onRequest={handleRequest}
+                  requesting={requestingRideId === ride._id}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Scroll hint dots */}
+          {!loadingRiders && filtered.length > 1 && (
+            <div className="flex justify-center gap-1.5 mt-3 px-4">
+              {filtered.map((_, i) => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Destination chip */}
+      <div className="mx-4 mt-3 flex items-center gap-2 bg-white rounded-2xl px-4 py-3 border border-gray-100 shadow-sm">
+        <span className="text-red-500 text-sm">●</span>
+        <span className="text-xs text-gray-500">Destination</span>
+        <span className="text-xs font-semibold text-gray-800 ml-1">St Aloysius College, Mangalore</span>
+        <span className="ml-auto text-xs text-gray-400">fixed</span>
+      </div>
+
+      {/* BOTTOM NAV */}
+      <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
     </div>
   )
 }
 
-// ─── Wrap with provider ─────────────────────────────────────
-function PassengerDashboard() {
+// ── Bottom nav ────────────────────────────────────────────────────────────────
+function BottomNav({ tab, setTab, navigate }) {
   return (
-    <RideProvider>
-      <PassengerDashboardInner />
-    </RideProvider>
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">
+      <button
+        onClick={() => { setTab("home"); navigate("/passenger-home") }}
+        className={`flex flex-col items-center gap-0.5 ${tab === "home" ? "text-gray-900" : "text-gray-400"}`}
+      >
+        <img src={homeIcon} className={`w-6 ${tab !== "home" ? "opacity-50" : ""}`} alt="Home" />
+        <span className={`text-xs ${tab === "home" ? "font-semibold" : ""}`}>Home</span>
+      </button>
+      <button
+        onClick={() => { setTab("history"); toast.success("History coming soon") }}
+        className={`flex flex-col items-center gap-0.5 ${tab === "history" ? "text-gray-900" : "text-gray-400"}`}
+      >
+        <img src={exploreIcon} className={`w-6 ${tab !== "history" ? "opacity-50" : ""}`} alt="History" />
+        <span className={`text-xs ${tab === "history" ? "font-semibold" : ""}`}>History</span>
+      </button>
+      <button
+        onClick={() => { setTab("account"); toast.success("Profile coming soon") }}
+        className={`flex flex-col items-center gap-0.5 ${tab === "account" ? "text-gray-900" : "text-gray-400"}`}
+      >
+        <img src={profileIcon} className={`w-6 ${tab !== "account" ? "opacity-50" : ""}`} alt="Account" />
+        <span className={`text-xs ${tab === "account" ? "font-semibold" : ""}`}>Account</span>
+      </button>
+    </div>
   )
 }
-
-export default PassengerDashboard
