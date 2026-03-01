@@ -16,7 +16,6 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 
 router.get("/nearby", auth, wrap(async (req, res) => {
   const { lat, lng } = req.query
-  const collegeId = req.user.universityId
 
   console.log("nearby req.user:", JSON.stringify(req.user))
   console.log("lat:", lat, "lng:", lng)
@@ -29,15 +28,14 @@ router.get("/nearby", auth, wrap(async (req, res) => {
   }
 
   const rides = await rideService.getNearbyRides(
-    parseFloat(lat), parseFloat(lng), collegeId
+    parseFloat(lat), parseFloat(lng), null
   )
   res.json({ success: true, data: { rides } })
 }))
 
-router.post("/:id/request", auth, requireVerified, wrap(async (req, res) => {
+router.post("/:id/request", auth, wrap(async (req, res) => {
   const { passengerLat, passengerLng, name, phone } = req.body
-  const rideId    = req.params.id
-  const collegeId = req.user.universityId
+  const rideId = req.params.id
 
   if (!passengerLat || !passengerLng) {
     return res.status(400).json({
@@ -61,13 +59,13 @@ router.post("/:id/request", auth, requireVerified, wrap(async (req, res) => {
       lat:    parseFloat(passengerLat),
       lng:    parseFloat(passengerLng),
     },
-    collegeId
+    null
   )
 
   res.json({ success: true, data: { ride } })
 }))
 
-router.get("/active", auth, requireVerified, wrap(async (req, res) => {
+router.get("/active", auth, wrap(async (req, res) => {
   const ride = await rideService.getPassengerActiveRide(req.user._id)
   res.json({ success: true, data: { ride } })
 }))
@@ -76,8 +74,12 @@ router.get("/active", auth, requireVerified, wrap(async (req, res) => {
 // RIDER ROUTES
 // ─────────────────────────────────────────────────────────────
 
-router.post("/", auth, requireVerified, wrap(async (req, res) => {
-  const { riderName, riderPhone, scooterNumber, pickupLat, pickupLng, currentLat, currentLng } = req.body
+router.post("/", auth, wrap(async (req, res) => {
+  const {
+    riderName, riderPhone, scooterNumber,
+    pickupLat, pickupLng, currentLat, currentLng,
+    departureTime,
+  } = req.body
 
   if (!pickupLat || !pickupLng || !currentLat || !currentLng) {
     return res.status(400).json({
@@ -86,6 +88,7 @@ router.post("/", auth, requireVerified, wrap(async (req, res) => {
     })
   }
 
+  // Block if rider already has an active ride
   const existing = await Ride.findOne({
     riderId: req.user._id,
     status: { $in: ["pending", "locked", "ongoing"] },
@@ -98,13 +101,20 @@ router.post("/", auth, requireVerified, wrap(async (req, res) => {
   }
 
   const ride = await Ride.create({
-    collegeId:    req.user.universityId,
+    collegeId:    null,
     riderId:      req.user._id,
-    riderName:    riderName  || req.user.firstName,
-    riderPhone:   riderPhone || req.user.phone,
-    scooterNumber,
-    currentLocation: { type: "Point", coordinates: [parseFloat(currentLng), parseFloat(currentLat)] },
-    pickupLocation:  { type: "Point", coordinates: [parseFloat(pickupLng),   parseFloat(pickupLat)]  },
+    riderName:    riderName  || req.user.firstName || "Rider",
+    riderPhone:   riderPhone || req.user.phone     || "",
+    scooterNumber: scooterNumber || "N/A",
+    departureTime: departureTime || null,
+    currentLocation: {
+      type: "Point",
+      coordinates: [parseFloat(currentLng), parseFloat(currentLat)],
+    },
+    pickupLocation: {
+      type: "Point",
+      coordinates: [parseFloat(pickupLng), parseFloat(pickupLat)],
+    },
     status: "pending",
   })
 
@@ -119,17 +129,32 @@ router.get("/my", auth, wrap(async (req, res) => {
   res.json({ success: true, data: { rides } })
 }))
 
-router.post("/:id/start", auth, requireVerified, wrap(async (req, res) => {
+// Cancel a pending ride (before any passenger joins)
+router.post("/:id/cancel", auth, wrap(async (req, res) => {
+  const ride = await Ride.findOneAndUpdate(
+    { _id: req.params.id, riderId: req.user._id, status: "pending" },
+    { $set: { status: "cancelled" } },
+    { new: true }
+  )
+  if (!ride) {
+    return res.status(400).json({
+      success: false,
+      error: { message: "Ride not found or already in progress" }
+    })
+  }
+  res.json({ success: true })
+}))
+router.post("/:id/start", auth, wrap(async (req, res) => {
   const ride = await rideService.startRide(req.params.id, req.user._id)
   res.json({ success: true, data: { ride } })
 }))
 
-router.post("/:id/complete", auth, requireVerified, wrap(async (req, res) => {
+router.post("/:id/complete", auth, wrap(async (req, res) => {
   const ride = await rideService.completeRide(req.params.id, req.user._id, req.body.paymentMethod)
   res.json({ success: true, data: { ride } })
 }))
 
-router.post("/:id/reject-passenger", auth, requireVerified, wrap(async (req, res) => {
+router.post("/:id/reject-passenger", auth, wrap(async (req, res) => {
   const ride = await rideService.rejectPassenger(req.params.id, req.user._id)
   res.json({ success: true, data: { ride } })
 }))

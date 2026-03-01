@@ -1,128 +1,143 @@
+// server/routes/auth.routes.js
+
 import { Router } from "express"
 import jwt from "jsonwebtoken"
 import { JWT_SECRET } from "../config/env.js"
-import { isDBReady, mem } from "../config/db.js"
 import User from "../models/User.js"
+import Student from "../models/Student.js"
 
 const router = Router()
 
 // ── POST /api/auth/firebase ──────────────────────────────────────────────────
-// Verifies Firebase phone OTP token → finds or creates MongoDB user → returns backend JWT
 router.post("/firebase", async (req, res) => {
-    try {
-        const { idToken } = req.body
-        if (!idToken) return res.status(400).json({ detail: "Missing idToken" })
+  try {
+    const { idToken } = req.body
+    if (!idToken) return res.status(400).json({ detail: "Missing idToken" })
 
-        const firebaseAdmin = (await import("../config/firebaseAdmin.js")).default
-        const decoded = await firebaseAdmin.auth().verifyIdToken(idToken)
+    const firebaseAdmin = (await import("../config/firebaseAdmin.js")).default
+    const decoded = await firebaseAdmin.auth().verifyIdToken(idToken)
 
-        if (isDBReady()) {
-            // ✅ findOneAndUpdate with upsert — avoids duplicate key errors entirely
-            // Never touches the `email` field, so the sparse unique index is never triggered
-            const user = await User.findOneAndUpdate(
-                { firebaseUid: decoded.uid },          // filter
-                {
-                    $setOnInsert: {                    // only set these on first creation
-                        firebaseUid: decoded.uid,
-                        phone:       decoded.phone_number || "",
-                        firstName:   "User",
-                        lastName:    decoded.phone_number || decoded.uid.slice(0, 6),
-                        verified:    false,
-                        role:        "student",
-                        isRider:     false,
-                    },
-                },
-                {
-                    upsert: true,                      // create if not found
-                    new: true,                         // return the document
-                    setDefaultsOnInsert: true,
-                }
-            )
+    const user = await User.findOneAndUpdate(
+      { firebaseUid: decoded.uid },
+      {
+        $set:         { phone: decoded.phone_number || "" },
+        $setOnInsert: {
+          firebaseUid:  decoded.uid,
+          firstName:    "",
+          lastName:     "",
+          email:        "",
+          gender:       "",
+          universityId: "",
+          isRider:      false,
+          role:         "student",
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
 
-            console.log("Firebase auth user:", user._id, user.phone)
+    console.log("Firebase auth:", user._id, user.phone)
 
-            const token = jwt.sign(
-                { uid: String(user._id) },
-                JWT_SECRET,
-                { expiresIn: "7d" }
-            )
-            return res.json({ token })
+    const token = jwt.sign({ uid: String(user._id) }, JWT_SECRET, { expiresIn: "7d" })
 
-        } else {
-            // DB not ready — use in-memory store
-            let memUser = [...mem.users.values()].find(u => u.firebaseUid === decoded.uid)
+    // Tell frontend what step to show next
+    const profileComplete = !!(user.firstName && user.universityId && user.gender)
+    const roleSelected    = !!(user.firstName) // role is selected after profile
 
-            if (!memUser) {
-                memUser = {
-                    _id:         `mem:${decoded.uid}`,
-                    firebaseUid: decoded.uid,
-                    phone:       decoded.phone_number || "",
-                    firstName:   "User",
-                    lastName:    decoded.phone_number || decoded.uid.slice(0, 6),
-                    isRider:     false,
-                    verified:    false,
-                    createdAt:   new Date(),
-                }
-                mem.users.set(memUser._id, memUser)
-            }
+    return res.json({
+      token,
+      userId:          String(user._id),
+      profileComplete,
+      roleSelected,
+      role:            user.isRider ? "rider" : "passenger",
+    })
 
-            const token = jwt.sign(
-                { uid: String(memUser._id) },
-                JWT_SECRET,
-                { expiresIn: "7d" }
-            )
-            return res.json({ token, mode: "mem" })
-        }
-
-    } catch (err) {
-        console.error("Firebase verify error:", err)
-        return res.status(401).json({ detail: "Invalid Firebase token" })
-    }
+  } catch (err) {
+    console.error("Firebase auth error:", err)
+    return res.status(401).json({ detail: "Invalid Firebase token" })
+  }
 })
 
-// ── GET /api/auth/users/me ───────────────────────────────────────────────────
-router.get("/users/me", async (req, res) => {
-    try {
-        const authHeader = req.headers.authorization || ""
-        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null
-        if (!token) return res.status(401).json({ detail: "Missing token" })
+// ── PUT /api/auth/profile ────────────────────────────────────────────────────
+router.put("/profile", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || ""
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null
+    if (!token) return res.status(401).json({ detail: "Missing token" })
 
-        const decoded = jwt.verify(token, JWT_SECRET)
+    const decoded = jwt.verify(token, JWT_SECRET)
+    const { firstName, lastName, email, gender, universityId, isRider } = req.body
 
-        if (!isDBReady() || String(decoded.uid).startsWith("mem:")) {
-            const memUser = [...mem.users.values()].find(u => String(u._id) === decoded.uid)
-            if (!memUser) return res.json({ user: null })
-            return res.json({
-                user: {
-                    uid:       String(memUser._id),
-                    phone:     memUser.phone,
-                    firstName: memUser.firstName,
-                    lastName:  memUser.lastName,
-                    isRider:   !!memUser.isRider,
-                    verified:  !!memUser.verified,
-                    createdAt: memUser.createdAt?.toISOString() || null,
-                },
-            })
-        } else {
-            const user = await User.findById(decoded.uid)
-            if (!user) return res.json({ user: null })
-            return res.json({
-                user: {
-                    uid:          String(user._id),
-                    phone:        user.phone,
-                    firstName:    user.firstName,
-                    lastName:     user.lastName,
-                    universityId: user.universityId,
-                    isRider:      !!user.isRider,
-                    verified:     !!user.verified,
-                    createdAt:    user.createdAt?.toISOString() || null,
-                },
-            })
-        }
-    } catch (err) {
-        console.error("Users/me error:", err?.message || err)
-        return res.status(401).json({ detail: "Invalid token" })
+    // If universityId is being set, mark student as registered
+    if (universityId) {
+      const existing = await User.findOne({
+        universityId,
+        _id: { $ne: decoded.uid }
+      })
+      if (existing) {
+        return res.status(409).json({ detail: "This University ID is already registered" })
+      }
+
+      await Student.findOneAndUpdate(
+        { universityId: universityId.toUpperCase() },
+        { $set: { isRegistered: true, registeredBy: decoded.uid } }
+      )
     }
+
+    const user = await User.findByIdAndUpdate(
+      decoded.uid,
+      {
+        $set: {
+          ...(firstName    !== undefined && { firstName }),
+          ...(lastName     !== undefined && { lastName }),
+          ...(email        !== undefined && { email }),
+          ...(gender       !== undefined && { gender }),
+          ...(universityId !== undefined && { universityId }),
+          ...(isRider      !== undefined && { isRider }),
+        },
+      },
+      { new: true }
+    )
+
+    if (!user) return res.status(404).json({ detail: "User not found" })
+    return res.json({ ok: true })
+
+  } catch (err) {
+    console.error("Profile update error:", err)
+    return res.status(500).json({ detail: "Server error" })
+  }
+})
+
+// ── GET /api/auth/me ─────────────────────────────────────────────────────────
+router.get("/me", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || ""
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null
+    if (!token) return res.status(401).json({ detail: "Missing token" })
+
+    const decoded = jwt.verify(token, JWT_SECRET)
+    const user = await User.findById(decoded.uid)
+    if (!user) return res.status(404).json({ detail: "User not found" })
+
+    return res.json({
+      user: {
+        uid:          String(user._id),
+        firebaseUid:  user.firebaseUid,
+        firstName:    user.firstName,
+        lastName:     user.lastName,
+        phone:        user.phone,
+        email:        user.email,
+        gender:       user.gender,
+        universityId: user.universityId,
+        isRider:      user.isRider,
+        role:         user.role,
+        avgRating:    user.ratingCount > 0
+                        ? (user.ratingSum / user.ratingCount).toFixed(1)
+                        : null,
+      }
+    })
+  } catch {
+    return res.status(401).json({ detail: "Invalid token" })
+  }
 })
 
 export default router

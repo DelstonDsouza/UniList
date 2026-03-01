@@ -1,16 +1,19 @@
+// src/pages/auth/Login.jsx
+
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { auth } from "../../config/firebase"
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth"
+import { apiFetch, setToken } from "../../services/api"
 
 export default function Login() {
-  const [step, setStep] = useState(1)
-  const [phone, setPhone] = useState("")
-  const [otp, setOtp] = useState("")
+  const [step,    setStep]    = useState(1)
+  const [phone,   setPhone]   = useState("")
+  const [otp,     setOtp]     = useState("")
   const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState("")
   const navigate = useNavigate()
 
-  // Setup invisible reCAPTCHA
   const setupRecaptcha = () => {
     if (!window.recaptchaVerifier) {
       window.recaptchaVerifier = new RecaptchaVerifier(
@@ -21,103 +24,72 @@ export default function Login() {
     }
   }
 
-  // Send OTP
   const sendOtp = async () => {
+    setError("")
     if (phone.length !== 10) {
-      alert("Enter valid 10-digit mobile number")
+      setError("Enter a valid 10-digit mobile number")
       return
     }
-
     try {
       setLoading(true)
       setupRecaptcha()
-
-      const appVerifier = window.recaptchaVerifier
-      const fullPhone = "+91" + phone
-
       const confirmation = await signInWithPhoneNumber(
         auth,
-        fullPhone,
-        appVerifier
+        "+91" + phone,
+        window.recaptchaVerifier
       )
-
       window.confirmationResult = confirmation
       setStep(2)
-    } catch (error) {
-      console.error("OTP Send Error:", error)
-      alert("OTP failed to send")
+    } catch (err) {
+      console.error("OTP send error:", err)
+      setError("Failed to send OTP. Try again.")
     } finally {
       setLoading(false)
     }
   }
 
-  // Verify OTP and authenticate backend
   const verifyOtp = async () => {
+    setError("")
     try {
       setLoading(true)
 
-      // 1️⃣ Verify OTP with Firebase
-      const result = await window.confirmationResult.confirm(otp)
+      // 1. Verify OTP with Firebase
+      const result      = await window.confirmationResult.confirm(otp)
       const firebaseUser = result.user
 
-      // 2️⃣ Get Firebase ID Token
+      // 2. Get Firebase ID token
       const idToken = await firebaseUser.getIdToken()
 
-      // 3️⃣ Send Firebase token to backend
-      const response = await fetch("http://localhost:5000/api/auth/firebase", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ idToken })
+      // 3. Exchange for backend JWT
+      const data = await apiFetch("/auth/firebase", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ idToken }),
       })
 
-      if (!response.ok) {
-        throw new Error("Backend authentication failed")
-      }
+      // 4. Save JWT
+      setToken(data.token)
 
-      const data = await response.json()
+      // 5. Save basic user info
+      localStorage.setItem("user", JSON.stringify({
+        uid:   data.userId,
+        phone: firebaseUser.phoneNumber,
+      }))
 
-      if (!data.token) {
-        throw new Error("JWT not received from backend")
-      }
-
-      // 4️⃣ Store backend JWT
-      localStorage.setItem("token", data.token)
-
-      // 5️⃣ Store user info
-      const phoneNumber = firebaseUser.phoneNumber.replace("+91", "")
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          phone: phoneNumber,
-          uid: firebaseUser.uid
-        })
-      )
-
-      // 6️⃣ Navigate based on profile/role
-      const completed = localStorage.getItem(`profile_${phoneNumber}`)
-      const role = localStorage.getItem(`role_${phoneNumber}`)
-
-      if (!completed) {
+      // 6. Navigate based on profile completeness
+      if (!data.profileComplete) {
         navigate("/register-details")
-        return
-      }
-
-      if (!role) {
+      } else if (!data.roleSelected) {
         navigate("/select-role")
-        return
-      }
-
-      if (role === "rider") {
+      } else if (data.role === "rider") {
         navigate("/rider-home")
       } else {
         navigate("/passenger-home")
       }
 
-    } catch (error) {
-      console.error("OTP Verification Error:", error)
-      alert("Invalid OTP or authentication failed")
+    } catch (err) {
+      console.error("OTP verify error:", err)
+      setError("Invalid OTP or authentication failed")
     } finally {
       setLoading(false)
     }
@@ -129,44 +101,31 @@ export default function Login() {
       {/* Header */}
       <div>
         <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={() => navigate("/")}
-            className="text-2xl font-bold"
-          >
-            ←
-          </button>
-
+          <button onClick={() => navigate("/")} className="text-2xl font-bold">←</button>
           <div className="flex items-center gap-3">
             <div className="flex gap-2">
               <div className={`w-12 h-1 rounded ${step >= 1 ? "bg-black" : "bg-gray-300"}`} />
               <div className={`w-12 h-1 rounded ${step >= 2 ? "bg-black" : "bg-gray-300"}`} />
-              <div className={`w-12 h-1 rounded ${step >= 3 ? "bg-black" : "bg-gray-300"}`} />
             </div>
-            <span className="text-lg font-semibold">
-              {step}/3
-            </span>
+            <span className="text-lg font-semibold">{step}/2</span>
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold mb-6">
-          Let's get you trip-ready!
-        </h1>
+        <h1 className="text-2xl font-bold mb-6">Let's get you trip-ready!</h1>
 
         {step === 1 && (
           <div className="bg-white p-5 rounded-2xl shadow-sm">
             <label className="text-gray-700 text-lg font-semibold">
               Enter your Mobile Number
             </label>
-
             <div className="flex gap-2 mt-3">
               <div className="bg-gray-200 px-4 py-3 rounded-lg">🇮🇳 +91</div>
-
               <input
                 type="tel"
                 placeholder="10-digit mobile number"
                 className="flex-1 bg-gray-200 p-3 rounded-lg outline-none"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={e => setPhone(e.target.value)}
               />
             </div>
           </div>
@@ -174,42 +133,39 @@ export default function Login() {
 
         {step === 2 && (
           <div className="bg-white p-5 rounded-2xl shadow-sm">
-            <label className="text-gray-600 text-sm">
-              Enter OTP
-            </label>
-
+            <label className="text-gray-600 text-sm">Enter OTP sent to +91{phone}</label>
             <input
               type="text"
               placeholder="Enter 6 digit OTP"
               className="w-full bg-gray-200 p-3 rounded-lg mt-3 outline-none"
               value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              onChange={e => setOtp(e.target.value)}
             />
           </div>
         )}
+
+        {error && <p className="text-red-500 text-sm mt-3 text-center">{error}</p>}
       </div>
 
       {/* Footer */}
-      <div>
+      <div className="pb-6">
         <p className="text-center text-sm text-gray-500 mb-4">
           By clicking Continue, you agree to our <b>T&Cs</b>
         </p>
-
         {step === 1 && (
           <button
             onClick={sendOtp}
             disabled={loading}
-            className="w-full bg-black text-white py-3 rounded-lg"
+            className="w-full bg-black text-white py-3 rounded-lg disabled:opacity-50"
           >
             {loading ? "Sending..." : "Continue"}
           </button>
         )}
-
         {step === 2 && (
           <button
             onClick={verifyOtp}
             disabled={loading}
-            className="w-full bg-black text-white py-3 rounded-lg"
+            className="w-full bg-black text-white py-3 rounded-lg disabled:opacity-50"
           >
             {loading ? "Verifying..." : "Continue"}
           </button>

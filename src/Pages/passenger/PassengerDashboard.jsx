@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css"
 import toast from "react-hot-toast"
 
 import { useRide } from "../../context/RideContext"
+import { apiFetch } from "../../services/api"
 import FareRevealSheet from "./FareRevealSheet"
 import ActiveRidePanel from "./ActiveRidePanel"
 import RideComplete from "./RideComplete"
@@ -14,7 +15,6 @@ import homeIcon    from "../../assets/icons/home-icon.svg"
 import exploreIcon from "../../assets/icons/explore-icon.svg"
 import profileIcon from "../../assets/icons/profile-icon.svg"
 
-// ── Fix Leaflet marker icons ──────────────────────────────────────────────────
 import L from "leaflet"
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -23,7 +23,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-// ── Recenter map ──────────────────────────────────────────────────────────────
 function RecenterMap({ position }) {
   const map = useMap()
   const prev = useRef(null)
@@ -36,7 +35,6 @@ function RecenterMap({ position }) {
   return null
 }
 
-// ── Star rating display ───────────────────────────────────────────────────────
 function Stars({ rating = 0 }) {
   const val = parseFloat(rating) || 0
   return (
@@ -52,7 +50,6 @@ function Stars({ rating = 0 }) {
   )
 }
 
-// ── Haversine distance ────────────────────────────────────────────────────────
 function distKm(lat1, lng1, lat2, lng2) {
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -65,11 +62,9 @@ function distKm(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-// ── Individual rider card ─────────────────────────────────────────────────────
-function RiderCard({ ride, userLocation, onRequest, requesting }) {
+// ── Rider Card — auto-fetches passenger profile ───────────────────────────────
+function RiderCard({ ride, userLocation, onRequest, requesting, passengerProfile }) {
   const [confirming, setConfirming] = useState(false)
-  const [name,  setName]  = useState("")
-  const [phone, setPhone] = useState("")
 
   const riderLat = ride.currentLocation?.coordinates?.[1]
   const riderLng = ride.currentLocation?.coordinates?.[0]
@@ -77,12 +72,17 @@ function RiderCard({ ride, userLocation, onRequest, requesting }) {
     ? distKm(userLocation[0], userLocation[1], riderLat, riderLng)
     : null
 
-  // Pickup area label
   const pickupArea = ride.pickupArea || ride.locationName || ride.collegeName || "—"
 
-  const handleRequest = () => {
-    if (!name.trim() || !phone.trim()) {
-      toast.error("Enter your name and phone to request")
+  const handleConfirm = () => {
+    if (!passengerProfile) {
+      toast.error("Profile not loaded yet. Try again.")
+      return
+    }
+    const name  = `${passengerProfile.firstName} ${passengerProfile.lastName}`.trim()
+    const phone = passengerProfile.phone || ""
+    if (!name) {
+      toast.error("Complete your profile before requesting a ride")
       return
     }
     onRequest(ride._id, name, phone)
@@ -98,7 +98,7 @@ function RiderCard({ ride, userLocation, onRequest, requesting }) {
           </div>
           <div>
             <p className="font-semibold text-gray-900 text-sm leading-tight">{ride.riderName || "—"}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{ride.scooterNumber || ride.vehicleNumber || "—"}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{ride.scooterNumber || "—"}</p>
           </div>
         </div>
         {dist !== null && (
@@ -108,45 +108,37 @@ function RiderCard({ ride, userLocation, onRequest, requesting }) {
         )}
       </div>
 
-      {/* Rating */}
-      <Stars rating={ride.rating || ride.ratingAvg || 0} />
+      <Stars rating={ride.rating || 0} />
 
-      {/* Pickup area */}
       <div className="flex items-center gap-1.5 text-xs text-gray-500">
         <span>📌</span>
         <span className="truncate">{pickupArea}</span>
       </div>
 
-      {/* Fare hint */}
-      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">
-        ⚠ Fare shown only after requesting · Cannot cancel
-      </div>
 
-      {/* Action */}
       {!confirming ? (
         <button
           onClick={() => setConfirming(true)}
           disabled={requesting}
           className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 active:scale-95 transition disabled:opacity-50"
         >
-          Request Ride
+          Accept Ride
         </button>
       ) : (
         <div className="space-y-2">
-          <input
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-            placeholder="Your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <input
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-            placeholder="Your phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-          <p className="text-xs text-center text-red-500">Cannot cancel once confirmed!</p>
+          {/* Show auto-filled passenger info — read only 
+          <div className="bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-200">
+            <p className="text-xs text-gray-400 mb-1">Requesting as</p>
+            <p className="text-sm font-semibold text-gray-800">
+              {passengerProfile
+                ? `${passengerProfile.firstName} ${passengerProfile.lastName}`.trim() || "—"
+                : "Loading..."}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {passengerProfile?.phone || "—"}
+            </p>
+          </div>*/}
+
           <div className="flex gap-2">
             <button
               onClick={() => setConfirming(false)}
@@ -155,8 +147,8 @@ function RiderCard({ ride, userLocation, onRequest, requesting }) {
               Back
             </button>
             <button
-              onClick={handleRequest}
-              disabled={requesting}
+              onClick={handleConfirm}
+              disabled={requesting || !passengerProfile}
               className="flex-1 py-2 rounded-xl bg-teal-500 text-white text-sm font-semibold hover:bg-teal-600 transition disabled:opacity-50"
             >
               {requesting ? "Locking…" : "Confirm"}
@@ -183,21 +175,27 @@ export default function PassengerDashboard() {
     requestingRideId,
   } = useRide()
 
-  const [search,   setSearch]   = useState("")
-  const [navTab,   setNavTab]   = useState("home")
+  const [search,           setSearch]           = useState("")
+  const [navTab,           setNavTab]           = useState("home")
+  const [passengerProfile, setPassengerProfile] = useState(null)
 
-  // ── Filter riders by search ───────────────────────────────────────────────
+  // ── Fetch passenger profile on mount ─────────────────────────────────────
+  useEffect(() => {
+    apiFetch("/auth/me")
+      .then(data => setPassengerProfile(data.user))
+      .catch(() => {})
+  }, [])
+
   const filtered = search.trim().length > 0
     ? nearbyRiders.filter((r) => {
         const haystack = [
           r.locationName, r.pickupArea, r.collegeName,
-          r.riderName,    r.scooterNumber,
+          r.riderName, r.scooterNumber,
         ].join(" ").toLowerCase()
         return haystack.includes(search.toLowerCase())
       })
     : nearbyRiders
 
-  // ── Request handler ───────────────────────────────────────────────────────
   const handleRequest = useCallback(async (rideId, name, phone) => {
     try {
       await requestRide(rideId, name, phone)
@@ -206,7 +204,6 @@ export default function PassengerDashboard() {
     }
   }, [requestRide])
 
-  // ── Completed / active views ──────────────────────────────────────────────
   if (viewState === "completed") return (
     <div className="min-h-screen bg-gray-100 pb-24">
       <RideComplete />
@@ -228,18 +225,19 @@ export default function PassengerDashboard() {
     </div>
   )
 
-  // ── Discovery view ────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-100 pb-24">
 
-      {/* HEADER */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <button className="text-2xl leading-none">☰</button>
-        <h1 className="text-lg font-semibold text-gray-900">Welcome, Passenger !</h1>
-        <div className="w-9 h-9 bg-teal-400 rounded-full" />
+        <h1 className="text-lg font-semibold text-gray-900">
+          Welcome, {passengerProfile?.firstName || "Passenger"}!
+        </h1>
+        <div className="w-9 h-9 bg-teal-400 rounded-full flex items-center justify-center text-white font-bold text-sm">
+          {passengerProfile?.firstName?.[0]?.toUpperCase() || "P"}
+        </div>
       </div>
 
-      {/* MAP */}
       <div className="mx-4 rounded-3xl overflow-hidden shadow-sm" style={{ height: 200 }}>
         {userLocation ? (
           <MapContainer center={userLocation} zoom={15} style={{ height: "100%", width: "100%" }}
@@ -250,7 +248,6 @@ export default function PassengerDashboard() {
             />
             <Marker position={userLocation} />
             <RecenterMap position={userLocation} />
-            {/* Rider pins */}
             {nearbyRiders.map((r) => {
               const lat = r.currentLocation?.coordinates?.[1]
               const lng = r.currentLocation?.coordinates?.[0]
@@ -266,10 +263,7 @@ export default function PassengerDashboard() {
         )}
       </div>
 
-      {/* RIDERS CARD PANEL */}
       <div className="mx-4 mt-4 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-
-        {/* Panel header + search */}
         <div className="px-4 pt-4 pb-3">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -283,7 +277,6 @@ export default function PassengerDashboard() {
             )}
           </div>
 
-          {/* Search bar */}
           <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2.5">
             <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -305,7 +298,6 @@ export default function PassengerDashboard() {
           </div>
         </div>
 
-        {/* Swipeable cards row */}
         <div className="pb-4">
           {loadingRiders && (
             <div className="flex gap-3 px-4 overflow-hidden">
@@ -338,12 +330,12 @@ export default function PassengerDashboard() {
                   userLocation={userLocation}
                   onRequest={handleRequest}
                   requesting={requestingRideId === ride._id}
+                  passengerProfile={passengerProfile}
                 />
               ))}
             </div>
           )}
 
-          {/* Scroll hint dots */}
           {!loadingRiders && filtered.length > 1 && (
             <div className="flex justify-center gap-1.5 mt-3 px-4">
               {filtered.map((_, i) => (
@@ -354,7 +346,6 @@ export default function PassengerDashboard() {
         </div>
       </div>
 
-      {/* Destination chip */}
       <div className="mx-4 mt-3 flex items-center gap-2 bg-white rounded-2xl px-4 py-3 border border-gray-100 shadow-sm">
         <span className="text-red-500 text-sm">●</span>
         <span className="text-xs text-gray-500">Destination</span>
@@ -362,13 +353,11 @@ export default function PassengerDashboard() {
         <span className="ml-auto text-xs text-gray-400">fixed</span>
       </div>
 
-      {/* BOTTOM NAV */}
       <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
     </div>
   )
 }
 
-// ── Bottom nav ────────────────────────────────────────────────────────────────
 function BottomNav({ tab, setTab, navigate }) {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">

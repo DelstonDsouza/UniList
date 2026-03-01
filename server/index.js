@@ -8,6 +8,7 @@ import logger from "./middleware/logger.js"
 import authRoutes from "./routes/auth.routes.js"
 import rideRoutes from "./routes/ride.routes.js"
 import riderRoutes from "./routes/rider.routes.js"  
+import studentRoutes from "./routes/student.routes.js"
 
 // ── Initialize ──────────────────────────────────────────────────────────────
 const app = express()
@@ -38,6 +39,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRoutes)
 app.use("/api/rides", rideRoutes)
 app.use("/api/rider", riderRoutes)
+app.use("/api/students", studentRoutes)
 
 // ── Global error handler ────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

@@ -1,12 +1,11 @@
 // server/models/Ride.js
-// REPLACE your existing Ride.js
 
 import mongoose from "mongoose"
 
 const GeoPointSchema = new mongoose.Schema(
   {
     type:        { type: String, enum: ["Point"], default: "Point" },
-    coordinates: { type: [Number], required: true },  // [lng, lat]
+    coordinates: { type: [Number], required: true }, // [lng, lat]
   },
   { _id: false }
 )
@@ -14,8 +13,8 @@ const GeoPointSchema = new mongoose.Schema(
 const PassengerSchema = new mongoose.Schema(
   {
     userId:   { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    name:     { type: String, default: null },
-    phone:    { type: String, default: null },
+    name:     { type: String, default: "" },
+    phone:    { type: String, default: "" },
     location: { type: GeoPointSchema, default: null },
   },
   { _id: false }
@@ -23,46 +22,53 @@ const PassengerSchema = new mongoose.Schema(
 
 const FareSchema = new mongoose.Schema(
   {
-    distanceKm:   { type: Number },
-    amount:       { type: Number },
-    calculatedAt: { type: Date },
+    distanceKm:   { type: Number, default: 0 },
+    amount:       { type: Number, default: 0 },
+    calculatedAt: { type: Date, default: null },
   },
   { _id: false }
 )
 
 const RideSchema = new mongoose.Schema(
   {
-    // Multi-tenancy
-    collegeId: { type: mongoose.Schema.Types.ObjectId, ref: "College", required: true },
+    // Rider info
+    riderId:       { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    riderName:     { type: String, default: "", trim: true },
+    riderPhone:    { type: String, default: "", trim: true },
+    scooterNumber: { type: String, default: "N/A", trim: true },
 
-    // Rider
-    riderId:      { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    riderName:    { type: String, required: true, trim: true },
-    riderPhone:   { type: String, required: true, trim: true },
-    scooterNumber:{ type: String, required: true, trim: true },
+    // Locations (GeoJSON — coordinates = [lng, lat])
+    currentLocation: { type: GeoPointSchema, required: true },
+    pickupLocation:  { type: GeoPointSchema, required: true },
 
-    // Geo — GeoJSON, coordinates = [lng, lat]
-    currentLocation: { type: GeoPointSchema, required: true },  // rider live position
-    pickupLocation:  { type: GeoPointSchema, required: true },  // where rider picks up
+    // College destination
+    collegeDestination: {
+      name: { type: String, default: "" },
+      lat:  { type: Number, default: null },
+      lng:  { type: Number, default: null },
+    },
+
+    // Departure time
+    departureTime:    { type: String, default: "" },  // "HH:mm" 24h format
+    departureTimeStr: { type: String, default: "" },  // "10:30 AM" display format
 
     // State machine
     status: {
       type: String,
-      enum: ["pending", "locked", "ongoing", "completed", "rejected"],
+      enum: ["pending", "locked", "ongoing", "completed", "cancelled"],
       default: "pending",
     },
 
-    // Passenger slot — null until someone requests
+    // Passenger — null until someone requests
     passenger: { type: PassengerSchema, default: null },
 
-    // Fare — null until locked (never exposed before lock)
+    // Fare — null until locked
     fare: { type: FareSchema, default: null },
 
     // Payment
     payment: {
-      method:        { type: String, enum: ["cash", "razorpay", null], default: null },
-      status:        { type: String, enum: ["pending", "paid"], default: "pending" },
-      transactionId: { type: String, default: null },
+      method: { type: String, enum: ["cash", "upi", null], default: null },
+      status: { type: String, enum: ["pending", "paid"], default: "pending" },
     },
 
     // Timestamps
@@ -73,11 +79,10 @@ const RideSchema = new mongoose.Schema(
   { timestamps: true }
 )
 
-// ── CRITICAL: 2dsphere indexes enable the $nearSphere 3 km filter ──
+// 2dsphere indexes for geo queries
 RideSchema.index({ currentLocation: "2dsphere" })
 RideSchema.index({ pickupLocation: "2dsphere" })
-RideSchema.index({ "passenger.location": "2dsphere" })
-RideSchema.index({ collegeId: 1, status: 1 })
 RideSchema.index({ riderId: 1, status: 1 })
+RideSchema.index({ status: 1 })
 
 export default mongoose.model("Ride", RideSchema)
