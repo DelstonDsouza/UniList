@@ -26,6 +26,7 @@ router.get("/nearby", auth, wrap(async (req, res) => {
   res.json({ success: true, data: { rides } })
 }))
 
+// REPLACE the entire /:id/request route with this:
 router.post("/:id/request", auth, wrap(async (req, res) => {
   const { passengerLat, passengerLng, name, phone } = req.body
   const rideId = req.params.id
@@ -43,17 +44,35 @@ router.post("/:id/request", auth, wrap(async (req, res) => {
     })
   }
 
-  const ride = await rideService.lockRide(
-    rideId,
-    {
-      userId: req.user._id,
-      name:   name  || req.user.firstName,
-      phone:  phone || req.user.phone,
-      lat:    parseFloat(passengerLat),
-      lng:    parseFloat(passengerLng),
-    },
-    null
-  )
+  const pLat = parseFloat(passengerLat)
+  const pLng = parseFloat(passengerLng)
+
+  const ride = await rideService.lockRide(rideId, {
+    userId: req.user._id,
+    name:   name  || req.user.firstName,
+    phone:  phone || req.user.phone,
+    lat:    pLat,
+    lng:    pLng,
+  })
+
+  // ✅ Use passenger location from req.body — guaranteed to exist
+  // passenger.location stores [lng, lat] GeoJSON
+  const pickupLat = ride.passenger?.location?.coordinates?.[1] ?? pLat
+  const pickupLng = ride.passenger?.location?.coordinates?.[0] ?? pLng
+
+  // Emit to rider with full passenger details
+  io.to(`ride:${ride._id}`).emit("ride:locked", {
+    rideId:         String(ride._id),
+    passengerName:  ride.passenger.name,
+    passengerPhone: ride.passenger.phone,
+    passengerLat:   pickupLat,   // ✅ now always populated
+    passengerLng:   pickupLng,   // ✅ now always populated
+    fare:           ride.fare.amount,
+    distanceKm:     ride.fare.distanceKm,
+  })
+
+  // Remove from all passengers' discovery lists
+  io.to("riders-watch").emit("ride:locked", { rideId: String(ride._id) })
 
   res.json({ success: true, data: { ride } })
 }))
@@ -141,10 +160,14 @@ router.post("/:id/cancel", auth, wrap(async (req, res) => {
   const ride = await Ride.findOne({ _id: req.params.id, riderId: req.user._id })
 
   if (!ride) {
-    return res.status(404).json({
-      success: false,
-      error: { code: "NOT_FOUND", message: "Ride not found" },
-    })
+    // Ride may have been auto-cancelled already — treat as success (idempotent)
+    console.log(`Cancel 404 for ride ${req.params.id} — already cancelled or not found`)
+    return res.json({ success: true, alreadyCancelled: true })
+  }
+
+  // Already cancelled — idempotent, just return success
+  if (ride.status === "cancelled") {
+    return res.json({ success: true, alreadyCancelled: true })
   }
 
   // If a passenger was locked in, free them

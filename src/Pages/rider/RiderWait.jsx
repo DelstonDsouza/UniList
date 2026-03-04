@@ -1,5 +1,4 @@
 // src/pages/rider/RiderWait.jsx
-// Connects via Socket.io — instantly navigates when passenger accepts
 
 import { useEffect, useState, useRef } from "react"
 import { MapContainer, TileLayer, Marker } from "react-leaflet"
@@ -16,6 +15,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
+const pickupIcon = new L.DivIcon({
+  html: `<div style="background:#2563EB;color:white;border-radius:50% 50% 50% 0;
+    transform:rotate(-45deg);width:36px;height:36px;border:3px solid white;
+    box-shadow:0 3px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
+    <span style="transform:rotate(45deg);font-size:15px">📍</span></div>`,
+  className: "", iconSize: [36, 36], iconAnchor: [18, 36],
+})
+
 export default function RiderWait() {
   const { id }   = useParams()
   const location = useLocation()
@@ -26,28 +33,26 @@ export default function RiderWait() {
   const [dots,            setDots]            = useState("")
   const [passengerJoined, setPassengerJoined] = useState(false)
   const [showCancelPopup, setShowCancelPopup] = useState(false)
-  const navigatedRef = useRef(false)
 
-  // Animated dots
+  const navigatedRef    = useRef(false)
+  const watchIdRef      = useRef(null)
+  const locationEmitRef = useRef(null)
+
   useEffect(() => {
     const t = setInterval(() => setDots(p => p.length >= 3 ? "" : p + "."), 500)
     return () => clearInterval(t)
   }, [])
 
-  // Socket.io — join ride room, listen for passenger accepting
+  // ── Socket: join room + listen for passenger accepting ────────────────────
   useEffect(() => {
     if (!id) return
-
     connectSocket()
     socket.emit("join:ride", id)
-    console.log("Rider joined socket room:", id)
 
     const handleLocked = (data) => {
-      console.log("ride:locked received:", data)
       if (navigatedRef.current) return
       navigatedRef.current = true
       setPassengerJoined(true)
-
       setTimeout(() => {
         navigate("/ride-confirmed", {
           state: {
@@ -68,14 +73,44 @@ export default function RiderWait() {
     }
 
     socket.on("ride:locked", handleLocked)
+    return () => socket.off("ride:locked", handleLocked)
+  }, [id])
+
+  // ── GPS watch — only broadcasts live location to passenger via socket ─────
+  // Does NOT update any map state — pickup pin is fixed from RiderHome
+  useEffect(() => {
+    if (!id || !navigator.geolocation) return
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      () => {}, // no state update — map stays fixed on pickup pin
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+    )
+
+    // Emit live location to passenger every 4s
+    locationEmitRef.current = setInterval(() => {
+      if (!socket.connected) return
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          socket.emit("rider:location", {
+            rideId: id,
+            lat:    pos.coords.latitude,
+            lng:    pos.coords.longitude,
+          })
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 3000 }
+      )
+    }, 4000)
 
     return () => {
-      socket.off("ride:locked", handleLocked)
-      // Don't disconnect — might still be needed
+      navigator.geolocation.clearWatch(watchIdRef.current)
+      clearInterval(locationEmitRef.current)
     }
   }, [id])
 
-  const riderCoords = userLocation || [12.9141, 74.8560]
+  // Pickup pin = what rider chose on map in RiderHome — fixed, never changes
+  const pickupCoords = userLocation || [12.9141, 74.8560]
 
   return (
     <div className="fixed inset-0 bg-white overflow-hidden">
@@ -93,13 +128,12 @@ export default function RiderWait() {
                 onClick={async () => {
                   try {
                     await apiFetch(`/rides/${id}/cancel`, { method: "POST" })
-                    console.log("Ride cancelled successfully")
                   } catch (err) {
                     console.error("Cancel failed:", err.message)
-                    // Still navigate — server may have cancelled but response failed
                   }
+                  clearInterval(locationEmitRef.current)
+                  navigator.geolocation.clearWatch(watchIdRef.current)
                   disconnectSocket(true)
-                  // Small delay so DB write + socket emit complete before navigate
                   await new Promise(r => setTimeout(r, 400))
                   navigate("/rider-home", { replace: true })
                 }}
@@ -119,17 +153,18 @@ export default function RiderWait() {
             {passengerJoined ? "✓ Passenger found!" : `Looking for passengers${dots}`}
           </p>
           <p className="text-xs text-white/70">
-            {passengerJoined ? "Taking you to confirmation…" : "Your ride is visible to nearby students"}
+            {passengerJoined ? "Taking you to confirmation…" : "📡 Broadcasting your location live"}
           </p>
         </div>
       </div>
 
-      {/* MAP */}
+      {/* MAP — single pickup pin only */}
       <div className="absolute top-0 left-0 right-0 h-[55vh] z-0">
-        <MapContainer center={riderCoords} zoom={14} zoomControl={false}
+        <MapContainer center={pickupCoords} zoom={14} zoomControl={false}
           style={{ height: "100%", width: "100%" }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          <Marker position={riderCoords} />
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+          <Marker position={pickupCoords} icon={pickupIcon} />
         </MapContainer>
       </div>
 
@@ -140,6 +175,11 @@ export default function RiderWait() {
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Your trip</p>
             <p className="text-xs text-gray-400">Departure</p>
             <p className="font-semibold">{departureTime || "ASAP"}</p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-blue-50 rounded-xl px-3 py-2">
+            <span className="text-blue-500">📍</span>
+            <span>Pickup pin set — passengers matched to this point</span>
           </div>
 
           <div className="pt-3 border-t border-gray-100">

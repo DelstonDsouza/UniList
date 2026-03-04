@@ -1,21 +1,12 @@
 // src/pages/rider/RidePickup.jsx
-//
-// Page flow:  RideConfirmed → [RidePickup] → RiderOngoing
-//
-// Shows:
-//  • Live map: rider GPS → passenger pickup (route updates as rider moves)
-//  • Passenger name + pickup location (no fare/departs — those are on RideConfirmed)
-//  • 4-box OTP at bottom, locked until rider arrives within 80m
-
 import { useEffect, useRef, useState } from "react"
 import { MapContainer, TileLayer, Polyline, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useLocation, useNavigate } from "react-router-dom"
-import { useRide } from "../../context/RideContext"
 import { apiFetch } from "../../services/api"
+import { socket, connectSocket } from "../../services/socket"
 
-// ─── Fix Leaflet marker icons (Vite) ─────────────────────────────────────────
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -23,31 +14,64 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-// ─── Custom pin ───────────────────────────────────────────────────────────────
+const COLLEGE          = [12.872109642876621, 74.84534749009204]
+const AVG_SPEED_KMH    = 40
+const PEAK_MULTIPLIER  = 1.5
+const PEAK_START       = 8
+const PEAK_END         = 9
+
+function isPeakHour() {
+  const h = new Date().getHours()
+  return h >= PEAK_START && h < PEAK_END
+}
+
+function calcEta(fromLat, fromLng, toLat, toLng) {
+  const R    = 6371
+  const dLat = ((toLat - fromLat) * Math.PI) / 180
+  const dLng = ((toLng - fromLng) * Math.PI) / 180
+  const a    =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((fromLat * Math.PI) / 180) *
+    Math.cos((toLat   * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2
+  const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  const speed  = isPeakHour() ? AVG_SPEED_KMH / PEAK_MULTIPLIER : AVG_SPEED_KMH
+  return { distKm: Number(distKm.toFixed(1)), etaMin: Math.max(1, Math.round((distKm / speed) * 60)) }
+}
+
+const haversineM = ([lat1, lng1], [lat2, lng2]) => {
+  const R  = 6371000
+  const dL = ((lat2 - lat1) * Math.PI) / 180
+  const dl = ((lng2 - lng1) * Math.PI) / 180
+  const a  = Math.sin(dL / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dl / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+// ── Map components ────────────────────────────────────────────────────────────
 function PinLayer({ position, color, emoji, label }) {
   const map = useMap()
   useEffect(() => {
     if (!position) return
     const icon = L.divIcon({
       className: "",
-      html: `<div style="
-        background:${color};width:40px;height:40px;
+      html: `<div style="background:${color};width:40px;height:40px;
         border-radius:50% 50% 50% 0;transform:rotate(-45deg);
         border:3px solid white;box-shadow:0 3px 14px rgba(0,0,0,0.28);
         display:flex;align-items:center;justify-content:center;">
-        <span style="transform:rotate(45deg);font-size:16px;line-height:1">${emoji}</span>
-      </div>`,
-      iconSize:   [40, 40],
-      iconAnchor: [20, 40],
+        <span style="transform:rotate(45deg);font-size:16px;line-height:1">${emoji}</span></div>`,
+      iconSize: [40, 40], iconAnchor: [20, 40],
     })
     const m = L.marker(position, { icon }).addTo(map)
-    if (label) m.bindTooltip(label, { permanent: false, direction: "top", offset: [0, -42] })
+    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -44],
+      className: "leaflet-tooltip-custom" })
     return () => { try { m.remove() } catch {} }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
 
-// ─── Accuracy ring around rider ───────────────────────────────────────────────
 function AccuracyRing({ position }) {
   const map = useMap()
   useEffect(() => {
@@ -61,7 +85,6 @@ function AccuracyRing({ position }) {
   return null
 }
 
-// ─── Auto-fit map to route ────────────────────────────────────────────────────
 function FitRoute({ coords }) {
   const map  = useMap()
   const prev = useRef(null)
@@ -75,60 +98,35 @@ function FitRoute({ coords }) {
   return null
 }
 
-// ─── Haversine distance in metres ────────────────────────────────────────────
-const haversineM = ([lat1, lng1], [lat2, lng2]) => {
-  const R  = 6371000
-  const dL = ((lat2 - lat1) * Math.PI) / 180
-  const dl = ((lng2 - lng1) * Math.PI) / 180
-  const a  =
-    Math.sin(dL / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dl / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-// ─── OSRM route fetch ─────────────────────────────────────────────────────────
-const getRoute = async (from, to, signal) => {
+const getOsrmRoute = async (from, to, signal) => {
   try {
-    const url =
-      `https://router.project-osrm.org/route/v1/driving/` +
-      `${from[1]},${from[0]};${to[1]},${to[0]}` +
-      `?overview=full&geometries=geojson`
-    const res   = await fetch(url, { signal })
-    const data  = await res.json()
+    const url = `https://router.project-osrm.org/route/v1/driving/` +
+      `${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`
+    const res  = await fetch(url, { signal })
+    const data = await res.json()
     const route = data?.routes?.[0]
     if (!route) return null
-    return {
-      coords:  (route.geometry.coordinates || []).map(([lng, lat]) => [lat, lng]),
-      km:      parseFloat((route.distance / 1000).toFixed(1)),
-      etaMin:  Math.ceil(route.duration / 60),
-    }
+    return { coords: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]) }
   } catch (e) {
     if (e.name !== "AbortError") console.warn("OSRM:", e.message)
     return null
   }
 }
 
-// ─── 4-box OTP input ──────────────────────────────────────────────────────────
+// ── OTP input boxes ───────────────────────────────────────────────────────────
 function OtpBoxes({ value, onChange, disabled }) {
   const refs = useRef([])
-
   const handleChange = (i, char) => {
     const digit = char.replace(/\D/, "")
     if (!digit) return
-    const arr = value.split("")
-    arr[i]    = digit
+    const arr = value.split(""); arr[i] = digit
     onChange(arr.join("").slice(0, 4))
     if (i < 3) refs.current[i + 1]?.focus()
   }
   const handleKeyDown = (i, e) => {
     if (e.key === "Backspace") {
-      if (value[i]) {
-        const arr = value.split(""); arr[i] = ""; onChange(arr.join(""))
-      } else if (i > 0) {
-        refs.current[i - 1]?.focus()
-      }
+      if (value[i]) { const arr = value.split(""); arr[i] = ""; onChange(arr.join("")) }
+      else if (i > 0) refs.current[i - 1]?.focus()
     }
   }
   const handlePaste = (e) => {
@@ -136,35 +134,22 @@ function OtpBoxes({ value, onChange, disabled }) {
     if (p) { onChange(p); refs.current[Math.min(p.length, 3)]?.focus() }
     e.preventDefault()
   }
-
   return (
     <div style={{ display: "flex", gap: 12, justifyContent: "center" }} onPaste={handlePaste}>
       {[0, 1, 2, 3].map((i) => (
-        <input
-          key={i}
-          ref={(el) => (refs.current[i] = el)}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
-          value={value[i] || ""}
-          disabled={disabled}
-          onChange={(e) => handleChange(i, e.target.value)}
-          onKeyDown={(e) => handleKeyDown(i, e)}
+        <input key={i} ref={el => refs.current[i] = el}
+          type="text" inputMode="numeric" maxLength={1}
+          value={value[i] || ""} disabled={disabled}
+          onChange={e => handleChange(i, e.target.value)}
+          onKeyDown={e => handleKeyDown(i, e)}
           style={{
-            width: 60, height: 68,
-            fontSize: 30, fontWeight: 800, textAlign: "center",
+            width: 60, height: 68, fontSize: 30, fontWeight: 800, textAlign: "center",
             borderRadius: 16,
-            border: disabled
-              ? "2px solid #e2e8f0"
-              : value[i] ? "2.5px solid #16a34a" : "2.5px solid #2563EB",
-            background: disabled
-              ? "#f8fafc"
-              : value[i] ? "#f0fdf4" : "#eff6ff",
-            color:    disabled ? "#cbd5e1" : "#0f172a",
-            outline:  "none",
-            transition: "border 0.2s, background 0.2s",
-            boxShadow:  disabled ? "none" : "0 2px 10px rgba(37,99,235,0.12)",
-            cursor:     disabled ? "not-allowed" : "text",
+            border: disabled ? "2px solid #e2e8f0" : value[i] ? "2.5px solid #16a34a" : "2.5px solid #2563EB",
+            background: disabled ? "#f8fafc" : value[i] ? "#f0fdf4" : "#eff6ff",
+            color: disabled ? "#cbd5e1" : "#0f172a", outline: "none",
+            boxShadow: disabled ? "none" : "0 2px 10px rgba(37,99,235,0.12)",
+            cursor: disabled ? "not-allowed" : "text",
           }}
         />
       ))}
@@ -172,86 +157,213 @@ function OtpBoxes({ value, onChange, disabled }) {
   )
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ── Modal shell ───────────────────────────────────────────────────────────────
+function Modal({ title, onClose, children }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 999,
+      background: "rgba(0,0,0,0.55)", display: "flex",
+      alignItems: "flex-end", justifyContent: "center",
+    }}>
+      <div style={{
+        width: "100%", maxWidth: 480, background: "white",
+        borderRadius: "24px 24px 0 0", padding: "24px 20px 36px",
+        maxHeight: "80vh", overflowY: "auto",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{title}</h3>
+          <button onClick={onClose} style={{ fontSize: 22, background: "none", border: "none", cursor: "pointer", color: "#64748b" }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ReportModal({ onClose, rideId }) {
+  const reasons = [
+    "Passenger was rude or unprofessional",
+    "Passenger gave wrong location",
+    "Passenger did not show up",
+    "Passenger asked for detour",
+    "Safety concern",
+    "Other issue",
+  ]
+  const [selected, setSelected] = useState("")
+  const [details,  setDetails]  = useState("")
+  const [sent,     setSent]     = useState(false)
+
+  const submit = () => {
+    if (!selected) return
+    setSent(true)
+  }
+
+  if (sent) return (
+    <Modal title="Report Submitted" onClose={onClose}>
+      <div style={{ textAlign: "center", padding: "20px 0" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+        <p style={{ fontSize: 15, color: "#475569" }}>Thank you. We'll review your report within 24 hours.</p>
+        <button onClick={onClose} style={{
+          marginTop: 20, width: "100%", padding: "14px 0", borderRadius: 14,
+          background: "#0f172a", color: "white", fontWeight: 700, fontSize: 15, border: "none", cursor: "pointer",
+        }}>Close</button>
+      </div>
+    </Modal>
+  )
+
+  return (
+    <Modal title="🚨 Report an Issue" onClose={onClose}>
+      <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>What happened?</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+        {reasons.map(r => (
+          <button key={r} onClick={() => setSelected(r)} style={{
+            padding: "12px 14px", borderRadius: 12, textAlign: "left", cursor: "pointer",
+            fontSize: 14, fontWeight: selected === r ? 700 : 500,
+            background: selected === r ? "#0f172a" : "#f8fafc",
+            color: selected === r ? "white" : "#374151",
+            border: selected === r ? "2px solid #0f172a" : "2px solid #e2e8f0",
+          }}>{r}</button>
+        ))}
+      </div>
+      <textarea value={details} onChange={e => setDetails(e.target.value)}
+        placeholder="Additional details (optional)…" rows={3}
+        style={{
+          width: "100%", borderRadius: 12, padding: "10px 14px", fontSize: 13,
+          border: "1.5px solid #e2e8f0", resize: "none", outline: "none",
+          fontFamily: "inherit", boxSizing: "border-box",
+        }}
+      />
+      <button onClick={submit} disabled={!selected} style={{
+        marginTop: 14, width: "100%", padding: "14px 0", borderRadius: 14,
+        background: selected ? "#dc2626" : "#e2e8f0",
+        color: selected ? "white" : "#94a3b8",
+        fontWeight: 700, fontSize: 15, border: "none",
+        cursor: selected ? "pointer" : "not-allowed",
+      }}>Submit Report</button>
+    </Modal>
+  )
+}
+
+function HelpModal({ onClose }) {
+  const faqs = [
+    { q: "How does OTP verification work?", a: "When you arrive at the pickup point, ask the passenger for their 4-digit OTP. Enter it to start the ride." },
+    { q: "What if the OTP is wrong?", a: "Ask the passenger to recheck. If issues persist, call them using the phone number shown." },
+    { q: "When does the ride start?", a: "The ride officially starts after OTP verification. Navigation then switches to College destination." },
+    { q: "How is fare calculated?", a: "₹5/km from passenger location to St Aloysius College. Minimum fare ₹20." },
+    { q: "ETA seems too high — why?", a: "Between 8–9 AM peak hours, we apply 1.5× traffic multiplier for realistic estimates." },
+    { q: "What if I have a breakdown?", a: "Call the passenger to inform them, then report the issue using the Report button." },
+  ]
+  return (
+    <Modal title="❓ Help & FAQ" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {faqs.map(({ q, a }) => (
+          <div key={q} style={{ background: "#f8fafc", borderRadius: 14, padding: "14px 16px" }}>
+            <p style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", margin: "0 0 6px" }}>{q}</p>
+            <p style={{ fontSize: 13, color: "#475569", margin: 0, lineHeight: 1.5 }}>{a}</p>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function RidePickup() {
-  const { state }          = useLocation()
-  const navigate            = useNavigate()
-  const { ride, setRide }  = useRide()
+  const { state } = useLocation()
+  const navigate  = useNavigate()
 
   const {
-    userLocation,
-    collegeLocation,
-    passengerPickup   = null,
-    passengerName     = "Passenger",
-    passengerRating   = 4.8,
-    passengerLocation = "Pickup point",
-    distance          = "",
-    fare              = 20,
-    departureTime     = "",
+    rideId, userLocation, collegeLocation,
+    passengerPickup, passengerName = "Passenger",
+    passengerPhone = "", fare = 20, departureTime = "",
   } = state || {}
 
-  // ── Rider live GPS ─────────────────────────────────────────────────────────
   const [riderPos,    setRiderPos]    = useState(userLocation ?? null)
-  const watchRef                      = useRef(null)
-
-  // ── Route state ────────────────────────────────────────────────────────────
   const [routeCoords, setRouteCoords] = useState([])
-  const [routeKm,     setRouteKm]     = useState(null)
-  const [routeEta,    setRouteEta]    = useState(null)
-  const abortRef                      = useRef(null)
+  const [arrived,     setArrived]     = useState(false)
+  const [otp,         setOtp]         = useState("")
+  const [otpError,    setOtpError]    = useState("")
+  const [submitting,  setSubmitting]  = useState(false)
+  const [phase,       setPhase]       = useState("toPassenger") // "toPassenger" | "toCollege"
+  const [etaToPass,   setEtaToPass]   = useState(null)
+  const [etaToCol,    setEtaToCol]    = useState(null)
+  const [distToCol,   setDistToCol]   = useState(null)
+  const [showReport,  setShowReport]  = useState(false)
+  const [showHelp,    setShowHelp]    = useState(false)
 
-  // ── Arrived (unlocks OTP) ──────────────────────────────────────────────────
-  const [arrived,    setArrived]    = useState(false)
+  const watchRef = useRef(null)
+  const abortRef = useRef(null)
+  const isPeak   = isPeakHour()
 
-  // ── OTP ───────────────────────────────────────────────────────────────────
-  const [otp,        setOtp]        = useState("")
-  const [otpError,   setOtpError]   = useState("")
-  const [submitting, setSubmitting] = useState(false)
-
-  // ── Start GPS watch ────────────────────────────────────────────────────────
+  // ── Socket ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!navigator.geolocation) return
+    if (!rideId) return
+    connectSocket()
+    socket.emit("join:ride", rideId)
+  }, [rideId])
+
+  // ── GPS watch + socket emit ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!navigator.geolocation || !rideId) return
     watchRef.current = navigator.geolocation.watchPosition(
-      (pos) => setRiderPos([pos.coords.latitude, pos.coords.longitude]),
+      (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        setRiderPos([lat, lng])
+        socket.emit("rider:location", { rideId, lat, lng })
+      },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
     )
     return () => { try { navigator.geolocation.clearWatch(watchRef.current) } catch {} }
-  }, [])
+  }, [rideId])
 
-  // ── Fetch route as rider moves ─────────────────────────────────────────────
+  // ── ETA recalculation ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (!riderPos || !passengerPickup) return
+    if (!riderPos) return
+    if (phase === "toPassenger" && passengerPickup) {
+      const { etaMin } = calcEta(riderPos[0], riderPos[1], passengerPickup[0], passengerPickup[1])
+      setEtaToPass(etaMin)
+      if (haversineM(riderPos, passengerPickup) <= 80) setArrived(true)
+    } else if (phase === "toCollege") {
+      const dest = collegeLocation || COLLEGE
+      const { distKm, etaMin } = calcEta(riderPos[0], riderPos[1], dest[0], dest[1])
+      setEtaToCol(etaMin)
+      setDistToCol(distKm)
+    }
+  }, [riderPos?.[0], riderPos?.[1], phase]) // eslint-disable-line
+
+  // ── OSRM route ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!riderPos) return
+    const dest = phase === "toCollege"
+      ? (collegeLocation || COLLEGE)
+      : passengerPickup
+    if (!dest) return
 
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
-    getRoute(riderPos, passengerPickup, ctrl.signal).then((r) => {
-      if (!r) return
-      setRouteCoords(r.coords)
-      setRouteKm(r.km)
-      setRouteEta(r.etaMin)
-      // Auto-unlock when within 80 metres
-      if (haversineM(riderPos, passengerPickup) <= 80) setArrived(true)
+    getOsrmRoute(riderPos, dest, ctrl.signal).then(r => {
+      if (r) setRouteCoords(r.coords)
     })
-
     return () => ctrl.abort()
-  }, [riderPos?.[0], riderPos?.[1]]) // eslint-disable-line
+  }, [riderPos?.[0], riderPos?.[1], phase]) // eslint-disable-line
 
-  // ── OTP verify ─────────────────────────────────────────────────────────────
+  // ── OTP verify ────────────────────────────────────────────────────────────
   const handleVerify = async () => {
     if (otp.length < 4) { setOtpError("Enter all 4 digits"); return }
-    setSubmitting(true)
-    setOtpError("")
+    setSubmitting(true); setOtpError("")
     try {
-      await apiFetch("/rides/verify-otp", {
-        method:  "POST",
+      await apiFetch(`/rides/${rideId}/start`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ rideId: ride.rideId, otp }),
+        body: JSON.stringify({ otp }),
       })
-      setRide((prev) => ({ ...prev, status: "ongoing" }))
-      navigate("/rider-ongoing", { state })
+      // Switch to college navigation phase
+      setPhase("toCollege")
+      setRouteCoords([])
     } catch (e) {
       setOtpError(e?.message || "Wrong OTP. Please try again.")
       setOtp("")
@@ -260,223 +372,256 @@ export default function RidePickup() {
     }
   }
 
-  const mapCenter = riderPos ?? passengerPickup ?? collegeLocation ?? [12.9141, 74.856]
+  // ── Complete ride ─────────────────────────────────────────────────────────
+  const handleComplete = async () => {
+    try {
+      await apiFetch(`/rides/${rideId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: "cash" }),
+      })
+      navigate("/rider-home", { replace: true })
+    } catch (e) {
+      console.error("Complete failed:", e)
+    }
+  }
 
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const mapCenter     = riderPos ?? passengerPickup ?? COLLEGE
+  const currentEta    = phase === "toCollege" ? etaToCol : etaToPass
+  const etaLabel      = phase === "toCollege" ? "ETA to College" : "ETA to Passenger"
+  const routeColor    = phase === "toCollege" ? "#16a34a" : "#2563EB"
+  const destPin       = phase === "toCollege" ? (collegeLocation || COLLEGE) : passengerPickup
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
+    <>
+      {showReport && <ReportModal onClose={() => setShowReport(false)} rideId={rideId} />}
+      {showHelp   && <HelpModal  onClose={() => setShowHelp(false)} />}
 
-      {/* ══ MAP ════════════════════════════════════════════════════════════ */}
-      <div style={{ height: "50vh", width: "100%", flexShrink: 0, position: "relative" }}>
-        <MapContainer
-          center={mapCenter}
-          zoom={14}
-          style={{ height: "100%", width: "100%" }}
-          zoomControl={false}
-        >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
-          />
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
 
-          {routeCoords.length > 1 && (
-            <Polyline positions={routeCoords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.88 }} />
-          )}
-          {routeCoords.length > 1 && <FitRoute coords={routeCoords} />}
+        {/* MAP */}
+        <div style={{ height: "48vh", width: "100%", flexShrink: 0, position: "relative" }}>
+          <MapContainer center={mapCenter} zoom={14}
+            style={{ height: "100%", width: "100%" }} zoomControl={false}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+            {routeCoords.length > 1 && (
+              <Polyline positions={routeCoords}
+                pathOptions={{ color: routeColor, weight: 5, opacity: 0.88 }} />
+            )}
+            {routeCoords.length > 1 && <FitRoute coords={routeCoords} />}
+            {riderPos && (
+              <>
+                <PinLayer position={riderPos} color="#2563EB" emoji="🏍" label="You" />
+                <AccuracyRing position={riderPos} />
+              </>
+            )}
+            {destPin && (
+              <PinLayer
+                position={destPin}
+                color={phase === "toCollege" ? "#dc2626" : "#16a34a"}
+                emoji={phase === "toCollege" ? "🎓" : "👤"}
+                label={phase === "toCollege" ? "College" : passengerName}
+              />
+            )}
+          </MapContainer>
 
-          {riderPos && (
-            <>
-              <PinLayer position={riderPos}       color="#2563EB" emoji="🏍" label="You" />
-              <AccuracyRing position={riderPos} />
-            </>
-          )}
-          {passengerPickup && (
-            <PinLayer position={passengerPickup}  color="#16a34a" emoji="👤" label={passengerName} />
-          )}
-        </MapContainer>
-
-        {/* Status badge — top left */}
-        <div style={{
-          position: "absolute", top: 14, left: 14, zIndex: 500,
-          background: arrived ? "#16a34a" : "#2563EB",
-          color: "white", borderRadius: 999,
-          padding: "7px 16px", fontSize: 12, fontWeight: 700,
-          letterSpacing: "0.06em", boxShadow: "0 2px 12px rgba(0,0,0,0.20)",
-          transition: "background 0.4s",
-        }}>
-          {arrived ? "✓ AT PICKUP" : "🏍 EN ROUTE"}
-        </div>
-
-        {/* ETA badge — top right */}
-        <div style={{
-          position: "absolute", top: 14, right: 14, zIndex: 500,
-          background: "white", borderRadius: 999,
-          padding: "7px 14px", fontSize: 13, fontWeight: 700,
-          display: "flex", alignItems: "center", gap: 8,
-          boxShadow: "0 2px 12px rgba(0,0,0,0.14)",
-        }}>
-          <span style={{ color: arrived ? "#16a34a" : "#2563EB" }}>
-            {arrived ? "Arrived" : routeEta != null ? `${routeEta} min` : "…"}
-          </span>
-          <span style={{ color: "#e2e8f0" }}>|</span>
-          <span style={{ color: "#475569" }}>
-            {routeKm != null ? `${routeKm} km` : "…"}
-          </span>
-        </div>
-      </div>
-
-      {/* ══ BOTTOM SHEET ═══════════════════════════════════════════════════ */}
-      <div style={{
-        flex: 1,
-        background: "white",
-        borderRadius: "24px 24px 0 0",
-        marginTop: -20,
-        zIndex: 10,
-        position: "relative",
-        padding: "18px 20px 32px",
-        boxShadow: "0 -6px 30px rgba(0,0,0,0.10)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 14,
-        overflowY: "auto",
-      }}>
-
-        {/* Handle */}
-        <div style={{ width: 40, height: 4, background: "#e2e8f0", borderRadius: 99, margin: "0 auto 2px" }} />
-
-        {/* Title */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <p style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", letterSpacing: "0.10em", margin: "0 0 3px" }}>
-              PASSENGER FOUND
-            </p>
-            <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", margin: 0 }}>
-              Head to Pickup Point
-            </h2>
-          </div>
+          {/* Status badge */}
           <div style={{
-            width: 44, height: 44, borderRadius: 14, background: "#eff6ff",
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+            position: "absolute", top: 14, left: 14, zIndex: 500,
+            background: arrived && phase === "toPassenger" ? "#16a34a"
+              : phase === "toCollege" ? "#16a34a" : "#2563EB",
+            color: "white", borderRadius: 999, padding: "7px 16px",
+            fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.20)",
           }}>
-            🏍
+            {phase === "toCollege" ? "🎓 TO COLLEGE"
+              : arrived ? "✓ AT PICKUP" : "🏍 EN ROUTE"}
+          </div>
+
+          {/* Help + Report overlay */}
+          <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
+            <button onClick={() => setShowHelp(true)} style={{
+              padding: "7px 12px", borderRadius: 20, border: "none",
+              background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            }}>❓</button>
+            <button onClick={() => setShowReport(true)} style={{
+              padding: "7px 12px", borderRadius: 20, border: "none",
+              background: "#fef2f2", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#dc2626",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            }}>🚨</button>
           </div>
         </div>
 
-        {/* Passenger card — name + pickup location only, no fare/departs */}
-        <div style={{ background: "#F0F9FF", border: "1.5px solid #BFDBFE", borderRadius: 18, padding: "14px 16px" }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.10em", margin: "0 0 10px" }}>
-            PASSENGER DETAILS
-          </p>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{
-                width: 50, height: 50, borderRadius: 14,
-                background: "linear-gradient(135deg,#2563EB,#1D4ED8)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: "white", fontSize: 20, fontWeight: 800,
-              }}>
-                {passengerName.charAt(0)}
-              </div>
-              <div>
-                <p style={{ fontWeight: 700, fontSize: 15, color: "#0f172a", margin: "0 0 3px" }}>
-                  {passengerName}
-                </p>
-                <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>
-                  📍 {passengerLocation}
-                </p>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={{ color: "#fbbf24", fontSize: 18 }}>★</span>
-              <span style={{ fontWeight: 700, color: "#374151", fontSize: 14 }}>{passengerRating}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ══ OTP SECTION ════════════════════════════════════════════════════ */}
+        {/* BOTTOM SHEET */}
         <div style={{
-          background: arrived ? "#f0fdf4" : "#f8fafc",
-          border: `2px solid ${arrived ? "#86efac" : "#e2e8f0"}`,
-          borderRadius: 20,
-          padding: "18px 16px 20px",
-          transition: "border 0.4s, background 0.4s",
+          flex: 1, background: "white", borderRadius: "24px 24px 0 0",
+          marginTop: -20, zIndex: 10, position: "relative",
+          padding: "16px 20px 32px",
+          boxShadow: "0 -6px 30px rgba(0,0,0,0.10)",
+          display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
         }}>
-          {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: 11,
-              background: arrived ? "#16a34a" : "#e2e8f0",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 17, transition: "background 0.4s",
-            }}>
-              🔐
-            </div>
+          <div style={{ width: 40, height: 4, background: "#e2e8f0", borderRadius: 99, margin: "0 auto 4px" }} />
+
+          {/* Title */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <p style={{ fontWeight: 700, fontSize: 14, margin: "0 0 2px", color: arrived ? "#15803d" : "#64748b" }}>
-                {arrived ? "Enter passenger's OTP" : "OTP unlocks on arrival"}
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
+                color: phase === "toCollege" ? "#16a34a" : "#2563EB" }}>
+                {phase === "toCollege" ? "RIDE IN PROGRESS" : "Pickup Passenger"}
               </p>
-              <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>
-                {arrived ? "Ask passenger for their 4-digit code" : "Drive to pickup point to unlock"}
-              </p>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                {phase === "toCollege" ? "Heading to College" : arrived ? "Enter Passenger OTP" : "Head to Pickup Point"}
+              </h2>
             </div>
           </div>
 
-          {/* 4 OTP boxes */}
-          <OtpBoxes
-            value={otp}
-            onChange={(v) => { setOtp(v); setOtpError("") }}
-            disabled={!arrived || submitting}
-          />
+          {/* ── BIG ETA ─────────────────────────────────────────────────── */}
+          <div style={{
+            background: phase === "toCollege" ? "#0f172a" : "#1e40af",
+            borderRadius: 18, padding: "16px 18px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}>
+            <div>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600,
+                letterSpacing: "0.08em", margin: "0 0 2px" }}>{etaLabel.toUpperCase()}</p>
+              <p style={{ fontSize: 48, fontWeight: 900, color: "white", margin: 0, lineHeight: 1 }}>
+                {currentEta != null ? currentEta : "—"}
+                <span style={{ fontSize: 16, fontWeight: 600, marginLeft: 6, color: "rgba(255,255,255,0.6)" }}>
+                  {currentEta != null ? "min" : ""}
+                </span>
+              </p>
+              {isPeak && (
+                <p style={{ fontSize: 10, color: "#fbbf24", marginTop: 3, fontWeight: 600 }}>
+                  ⚠ Peak hour — 1.5× traffic
+                </p>
+              )}
+            </div>
+            {phase === "toCollege" && distToCol != null && (
+              <p style={{ fontSize: 26, fontWeight: 800, color: "white", margin: 0 }}>
+                {distToCol} km
+              </p>
+            )}
+          </div>
 
-          {otpError && (
-            <p style={{ textAlign: "center", color: "#dc2626", fontSize: 12, marginTop: 10, fontWeight: 600 }}>
-              ⚠ {otpError}
-            </p>
+          {/* Passenger card */}
+          <div style={{ background: "#F0F9FF", border: "1.5px solid #BFDBFE", borderRadius: 16, padding: "12px 14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 46, height: 46, borderRadius: 12,
+                  background: "linear-gradient(135deg,#2563EB,#1D4ED8)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "white", fontSize: 18, fontWeight: 800,
+                }}>{passengerName.charAt(0)}</div>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: 15, color: "#0f172a", margin: "0 0 2px" }}>{passengerName}</p>
+                  {passengerPhone && (
+                    <a href={`tel:${passengerPhone}`}
+                      style={{ fontSize: 12, color: "#2563EB", textDecoration: "none" }}>
+                      📞 {passengerPhone}
+                    </a>
+                  )}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 16, fontWeight: 800, color: "#16a34a", margin: 0 }}>₹{fare}</p>
+                <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>cash</p>
+              </div>
+            </div>
+          </div>
+
+          {/* OTP section — only before ride starts */}
+          {phase === "toPassenger" && (
+            <div style={{
+              background: arrived ? "#f0fdf4" : "#f8fafc",
+              border: `2px solid ${arrived ? "#86efac" : "#e2e8f0"}`,
+              borderRadius: 18, padding: "16px 16px 18px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: arrived ? "#16a34a" : "#e2e8f0",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                }}>🔐</div>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: 14, margin: "0 0 1px",
+                    color: arrived ? "#15803d" : "#64748b" }}>
+                    {arrived ? "Enter passenger's OTP" : "OTP unlocks on arrival"}
+                  </p>
+                  <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>
+                    {arrived ? "Ask passenger for their 4-digit code" : "Drive to pickup point to unlock"}
+                  </p>
+                </div>
+              </div>
+
+              <OtpBoxes value={otp} onChange={v => { setOtp(v); setOtpError("") }}
+                disabled={!arrived || submitting} />
+
+              {otpError && (
+                <p style={{ textAlign: "center", color: "#dc2626", fontSize: 12, marginTop: 10, fontWeight: 600 }}>
+                  ⚠ {otpError}
+                </p>
+              )}
+
+              <button onClick={handleVerify}
+                disabled={!arrived || otp.length < 4 || submitting}
+                style={{
+                  width: "100%", marginTop: 14, padding: "14px 0",
+                  borderRadius: 14, border: "none", fontSize: 15, fontWeight: 700,
+                  cursor: (!arrived || otp.length < 4 || submitting) ? "not-allowed" : "pointer",
+                  background: (!arrived || otp.length < 4) ? "#e2e8f0"
+                    : "linear-gradient(135deg,#16a34a,#15803d)",
+                  color: (!arrived || otp.length < 4) ? "#94a3b8" : "white",
+                  boxShadow: (arrived && otp.length === 4) ? "0 4px 18px rgba(22,163,74,0.28)" : "none",
+                }}>
+                {submitting ? "Verifying…"
+                  : !arrived ? "Drive to passenger first"
+                  : otp.length < 4 ? "Enter OTP to continue"
+                  : "Verify OTP & Start Ride →"}
+              </button>
+
+              {!arrived && (
+                <button onClick={() => setArrived(true)} style={{
+                  width: "100%", marginTop: 8, padding: "11px 0",
+                  borderRadius: 12, border: "1.5px solid #cbd5e1",
+                  background: "transparent", color: "#64748b",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer",
+                }}>
+                  I've reached the pickup point
+                </button>
+              )}
+            </div>
           )}
 
-          {/* Verify button */}
-          <button
-            onClick={handleVerify}
-            disabled={!arrived || otp.length < 4 || submitting}
-            style={{
-              width: "100%", marginTop: 16, padding: "15px 0",
-              borderRadius: 14, border: "none",
-              fontSize: 15, fontWeight: 700, letterSpacing: "0.02em",
-              cursor: (!arrived || otp.length < 4 || submitting) ? "not-allowed" : "pointer",
-              background: (!arrived || otp.length < 4)
-                ? "#e2e8f0"
-                : "linear-gradient(135deg,#16a34a,#15803d)",
-              color:     (!arrived || otp.length < 4) ? "#94a3b8" : "white",
-              boxShadow: (arrived && otp.length === 4) ? "0 4px 18px rgba(22,163,74,0.28)" : "none",
-              transition: "all 0.3s",
-            }}
-          >
-            {submitting
-              ? "Verifying…"
-              : !arrived
-                ? "Drive to passenger first"
-                : otp.length < 4
-                  ? "Enter OTP to continue"
-                  : "Verify OTP & Start Ride →"}
-          </button>
-
-          {/* Manual override */}
-          {!arrived && (
-            <button
-              onClick={() => setArrived(true)}
-              style={{
-                width: "100%", marginTop: 10, padding: "11px 0",
-                borderRadius: 12, border: "1.5px solid #cbd5e1",
-                background: "transparent", color: "#64748b",
-                fontSize: 13, fontWeight: 600, cursor: "pointer",
-              }}
-            >
-              I've reached the pickup point
+          {/* Complete ride button — once ride started */}
+          {phase === "toCollege" && (
+            <button onClick={handleComplete} style={{
+              width: "100%", padding: "16px 0", borderRadius: 16,
+              background: "linear-gradient(135deg,#16a34a,#15803d)",
+              color: "white", fontSize: 16, fontWeight: 800, border: "none", cursor: "pointer",
+              boxShadow: "0 4px 18px rgba(22,163,74,0.3)",
+            }}>
+              ✓ Complete Ride & Collect ₹{fare}
             </button>
           )}
-        </div>
 
+          {/* Report + Help buttons */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => setShowReport(true)} style={{
+              flex: 1, padding: "11px 0", borderRadius: 12,
+              border: "1.5px solid #fecaca", background: "#fef2f2",
+              color: "#dc2626", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>🚨 Report Issue</button>
+            <button onClick={() => setShowHelp(true)} style={{
+              flex: 1, padding: "11px 0", borderRadius: 12,
+              border: "1.5px solid #e2e8f0", background: "#f8fafc",
+              color: "#475569", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>❓ Help</button>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

@@ -11,6 +11,13 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // ✅ Add this — proxies socket.io through Vite dev server
+      "/socket.io": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+        secure: false,
+        ws: true,   // ← critical: enables WebSocket proxying
+      },
       "/nominatim": {
         target: "https://nominatim.openstreetmap.org",
         changeOrigin: true,

@@ -9,7 +9,6 @@ import homeIcon from "../../assets/icons/home-icon.svg"
 import exploreIcon from "../../assets/icons/explore-icon.svg"
 import profileIcon from "../../assets/icons/profile-icon.svg"
 
-// ─── Fix Leaflet marker icons broken by Vite ──────────────────────────────────
 import L from "leaflet"
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -17,8 +16,6 @@ L.Icon.Default.mergeOptions({
   iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function RecenterMap({ position }) {
   const map = useMap()
@@ -37,15 +34,14 @@ function MapClickHandler({ onPick }) {
   return null
 }
 
-// ─── Nominatim helpers ────────────────────────────────────────────────────────
-const NOMINATIM = "/nominatim"
+const NOMINATIM  = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
 
 const extractShortName = (data) => {
-  const a = data.address || {}
-  const road   = a.road || ""
-  const area   = a.neighbourhood || a.suburb || ""
-  const city   = a.city || a.town || a.village || a.county || ""
+  const a    = data.address || {}
+  const road = a.road || ""
+  const area = a.neighbourhood || a.suburb || ""
+  const city = a.city || a.town || a.village || a.county || ""
   if (road && area && city) return `${road}, ${area}, ${city}`
   if (road && city)         return `${road}, ${city}`
   if (area && city)         return `${area}, ${city}`
@@ -81,7 +77,6 @@ const searchPlaces = async (query) => {
   }
 }
 
-// ─── Time helpers ─────────────────────────────────────────────────────────────
 const formatTime = (t) => {
   if (!t) return ""
   const [h, m] = t.split(":").map(Number)
@@ -92,11 +87,15 @@ const getMinTime = () => {
   return `${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}`
 }
 
-// ─── RiderHome ────────────────────────────────────────────────────────────────
 export default function RiderHome() {
   const navigate = useNavigate()
 
-  const [coords,        setCoords]        = useState(null)
+  // ── TWO separate location states ──────────────────────────────────────────
+  // liveGps   → rider's real GPS position (used only for map centering on mount)
+  // pinCoords → the pickup location the rider chose (map pin / search / GPS button)
+  //             THIS is what gets submitted. GPS watch never overwrites this.
+  const [liveGps,       setLiveGps]       = useState(null)
+  const [pinCoords,     setPinCoords]     = useState(null)  // ← submitted pickup point
   const [locationName,  setLocationName]  = useState("")
   const [gpsStatus,     setGpsStatus]     = useState("loading")
   const [departureTime, setDepartureTime] = useState("")
@@ -104,9 +103,9 @@ export default function RiderHome() {
   const [locError,      setLocError]      = useState(false)
   const [showPopup,     setShowPopup]     = useState(false)
 
-  const [suggestions,  setSuggestions]  = useState([])
-  const [showDrop,     setShowDrop]     = useState(false)
-  const [loadingSugg,  setLoadingSugg]  = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [showDrop,    setShowDrop]    = useState(false)
+  const [loadingSugg, setLoadingSugg] = useState(false)
 
   const isUserTyping = useRef(false)
   const debTimer     = useRef(null)
@@ -116,9 +115,9 @@ export default function RiderHome() {
   const collegeCoords = [12.872109642876621, 74.84534749009204]
   const collegeName   = "St Aloysius College, Mangalore"
 
-  // ─── Apply GPS coordinates ───────────────────────────────────────────────
-  const applyCoords = useCallback(async (lat, lng) => {
-    setCoords([lat, lng])
+  // ── Set both pin and label (used when GPS or button sets location) ─────────
+  const applyPin = useCallback(async (lat, lng) => {
+    setPinCoords([lat, lng])
     setLocationName("Getting address…")
     const name = await reverseGeocode(lat, lng)
     isUserTyping.current = false
@@ -127,49 +126,55 @@ export default function RiderHome() {
     setGpsStatus("ok")
   }, [])
 
-  // ─── Auto-fetch GPS on mount ─────────────────────────────────────────────
+  // ── GPS on mount — sets liveGps for map center + sets initial pin ──────────
   useEffect(() => {
     let cancelled = false
-
     if (!navigator.geolocation) {
       setGpsStatus("error")
       setLocationName("GPS not supported — type your location")
       return
     }
-
     setGpsStatus("loading")
     setLocationName("Fetching your location…")
 
     const onSuccess = (pos) => {
       if (cancelled) return
-      applyCoords(pos.coords.latitude, pos.coords.longitude)
+      const lat = pos.coords.latitude
+      const lng = pos.coords.longitude
+      setLiveGps([lat, lng])
+      // Only set pin on first GPS fix — never overwrite a user-chosen pin
+      setPinCoords(prev => prev ?? [lat, lng])
+      if (!prev) applyPin(lat, lng)
     }
 
-    const onError = () => {
+    // Simplified: just call applyPin once on first success
+    const onFirstSuccess = (pos) => {
       if (cancelled) return
-      setGpsStatus("error")
-      setLocationName("")
+      const lat = pos.coords.latitude
+      const lng = pos.coords.longitude
+      setLiveGps([lat, lng])
+      applyPin(lat, lng)  // sets pinCoords + label on first load only
     }
 
-    // Try high accuracy first, fall back to low accuracy
     navigator.geolocation.getCurrentPosition(
-      onSuccess,
+      onFirstSuccess,
       () => {
         navigator.geolocation.getCurrentPosition(
-          onSuccess,
-          onError,
+          onFirstSuccess,
+          () => { if (!cancelled) { setGpsStatus("error"); setLocationName("") } },
           { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
         )
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     )
 
-    // Continuous watch
+    // Continuous watch — ONLY updates liveGps for map dot, NEVER touches pinCoords
     try {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (pos) => {
-          if (cancelled || isUserTyping.current) return
-          setCoords([pos.coords.latitude, pos.coords.longitude])
+          if (cancelled) return
+          setLiveGps([pos.coords.latitude, pos.coords.longitude])
+          // ← intentionally NOT calling applyPin here
         },
         () => {},
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
@@ -180,21 +185,14 @@ export default function RiderHome() {
       cancelled = true
       try { navigator.geolocation.clearWatch(watchIdRef.current) } catch {}
     }
-  }, [applyCoords])
+  }, [applyPin])
 
-  // ─── Autocomplete ────────────────────────────────────────────────────────
+  // ── Autocomplete ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isUserTyping.current) return
     if (debTimer.current) clearTimeout(debTimer.current)
-
     const q = locationName.trim()
-    if (q.length < 3) {
-      setSuggestions([])
-      setShowDrop(false)
-      setLoadingSugg(false)
-      return
-    }
-
+    if (q.length < 3) { setSuggestions([]); setShowDrop(false); setLoadingSugg(false); return }
     setLoadingSugg(true)
     debTimer.current = setTimeout(async () => {
       const items = await searchPlaces(q)
@@ -202,11 +200,9 @@ export default function RiderHome() {
       setShowDrop(items.length > 0)
       setLoadingSugg(false)
     }, 350)
-
     return () => clearTimeout(debTimer.current)
   }, [locationName])
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (dropRef.current && !dropRef.current.contains(e.target)) setShowDrop(false)
@@ -215,12 +211,12 @@ export default function RiderHome() {
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  // ─── Handlers ────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const selectSuggestion = (item) => {
     isUserTyping.current = false
     setLocationName(item.short || item.label.split(",")[0])
-    setCoords([item.lat, item.lng])
+    setPinCoords([item.lat, item.lng])  // ← sets pin only, not liveGps
     setSuggestions([])
     setShowDrop(false)
     setLocError(false)
@@ -230,29 +226,19 @@ export default function RiderHome() {
     if (!navigator.geolocation) return
     setLocationName("Fetching your location…")
     setShowDrop(false)
-
-    const onSuccess = (pos) => applyCoords(pos.coords.latitude, pos.coords.longitude)
-    const onError = (err) => {
-      console.warn("GPS denied:", err.message)
-      setGpsStatus("error")
-      setLocationName("")
-    }
-
+    const onSuccess = (pos) => applyPin(pos.coords.latitude, pos.coords.longitude)
+    const onError   = () => { setGpsStatus("error"); setLocationName("") }
     navigator.geolocation.getCurrentPosition(
       onSuccess,
-      () => {
-        navigator.geolocation.getCurrentPosition(
-          onSuccess,
-          onError,
-          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
-        )
-      },
+      () => navigator.geolocation.getCurrentPosition(onSuccess, onError,
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     )
   }
 
+  // Map pin click — sets pinCoords + label, DOES NOT touch liveGps
   const handleMapPick = async ([lat, lng]) => {
-    setCoords([lat, lng])
+    setPinCoords([lat, lng])
     setLocationName("Getting address…")
     setShowDrop(false)
     const name = await reverseGeocode(lat, lng)
@@ -263,7 +249,7 @@ export default function RiderHome() {
 
   const handleSearch = () => {
     let err = false
-    if (!coords)       { setLocError(true);  err = true } else setLocError(false)
+    if (!pinCoords) { setLocError(true); err = true } else setLocError(false)
     if (!departureTime) {
       setTimeError(true); err = true
     } else {
@@ -278,19 +264,21 @@ export default function RiderHome() {
     setShowPopup(false)
     navigate("/rider-searching", {
       state: {
-        userLocation:      coords,
-        collegeLocation:   collegeCoords,
-        departureTime:     formatTime(departureTime),
-        departureTimeRaw:  departureTime,
+        userLocation:     pinCoords,       // ← pinned location, not live GPS
+        liveGpsLocation:  liveGps,         // ← actual GPS (for rider's current position)
+        collegeLocation:  collegeCoords,
+        departureTime:    formatTime(departureTime),
+        departureTimeRaw: departureTime,
       },
     })
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // Map shows pin marker (pinCoords) and centers on it initially
+  const mapCenter = pinCoords || liveGps
+
   return (
     <div className="min-h-screen bg-gray-100 pb-24">
 
-      {/* HEADER */}
       <div className="flex items-center justify-between px-4 pt-4">
         <button className="text-2xl leading-none">☰</button>
         <h1 className="text-lg font-semibold">Welcome, Rider !</h1>
@@ -298,16 +286,20 @@ export default function RiderHome() {
       </div>
 
       {/* MAP */}
-      <div className="mt-4 mx-4 rounded-3xl overflow-hidden shadow-sm" style={{ height: 220 }}>
-        {coords ? (
-          <MapContainer center={coords} zoom={15} style={{ height: "100%", width: "100%" }}
+      <div className="mt-4 mx-4 rounded-3xl overflow-hidden shadow-sm relative" style={{ height: 220 }}>
+        {/* Hint overlay */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[999] bg-black/60 text-white text-xs px-3 py-1 rounded-full pointer-events-none">
+          📍 Tap map to set pickup point
+        </div>
+        {mapCenter ? (
+          <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
             dragging zoomControl scrollWheelZoom doubleClickZoom>
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
-            />
-            <Marker position={coords} />
-            <RecenterMap position={coords} />
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+            {/* Pinned pickup marker */}
+            {pinCoords && <Marker position={pinCoords} />}
+            {/* Center map on pin (only moves when pin changes, not on GPS watch) */}
+            <RecenterMap position={pinCoords} />
             <MapClickHandler onPick={handleMapPick} />
           </MapContainer>
         ) : (
@@ -343,32 +335,26 @@ export default function RiderHome() {
       {/* POST RIDE CARD */}
       <div className="px-4 mt-5">
         <h2 className="font-semibold mb-3">Post a Ride</h2>
-
         <div className="p-5 rounded-2xl space-y-4 text-white" style={{ backgroundColor: "rgba(0,0,0,0.85)" }}>
 
-          {/* Current Location */}
           <div>
             <label className="text-sm opacity-80 block mb-1">Current Location</label>
             <div className="relative" ref={dropRef}>
-              <input
-                type="text"
-                value={locationName}
+              <input type="text" value={locationName}
                 onChange={(e) => {
                   isUserTyping.current = true
                   setLocationName(e.target.value)
                   setLocError(false)
                 }}
                 onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
-                placeholder="Type an address…"
+                placeholder="Type an address or tap the map…"
                 className={`w-full p-3 rounded-lg text-black bg-white text-sm border
                   ${locError ? "border-red-500 ring-1 ring-red-400" : "border-transparent"}
                   focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
               />
-
               {loadingSugg && (
                 <span className="absolute right-3 top-3.5 text-gray-400 text-base animate-spin select-none">⟳</span>
               )}
-
               {showDrop && suggestions.length > 0 && (
                 <ul className="absolute z-50 left-0 right-0 mt-1 bg-white text-black border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
                   {suggestions.map((s, i) => (
@@ -383,23 +369,19 @@ export default function RiderHome() {
                 </ul>
               )}
             </div>
-
             <button type="button" onClick={useCurrentLocation}
               className="mt-2 text-xs text-teal-400 hover:text-teal-200 hover:underline transition">
               📍 Use current location
             </button>
-
             {locError && <p className="text-red-400 text-xs mt-1">⚠ Could not determine your location.</p>}
           </div>
 
-          {/* Destination */}
           <div>
             <label className="text-sm opacity-80 block mb-1">Destination</label>
             <input value={collegeName} readOnly
               className="w-full p-3 rounded-lg text-black bg-white text-sm cursor-default" />
           </div>
 
-          {/* Departure Time */}
           <div>
             <label className="text-sm opacity-80 block mb-1">Departure Time</label>
             <input type="time" value={departureTime} min={getMinTime()}
@@ -437,7 +419,6 @@ export default function RiderHome() {
           <div className="text-sm">Account</div>
         </div>
       </div>
-
     </div>
   )
 }

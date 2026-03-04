@@ -77,10 +77,10 @@ initDB()
 app.get("/health", (_req, res) => res.json({ ok: true }))
 
 // ── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api/auth",     authRoutes)
-app.use("/api/rides",    rideRoutes)
-app.use("/api/rider",    riderRoutes)
-app.use("/api/students", studentRoutes)
+app.use("/api/auth",authRoutes)
+app.use("/api/rides",rideRoutes)
+app.use("/api/rider",riderRoutes)
+app.use("/api/students",studentRoutes)
 
 // ── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

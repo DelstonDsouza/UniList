@@ -73,6 +73,7 @@ const RideSchema = new mongoose.Schema(
 
     // Timestamps
     lockedAt:    { type: Date, default: null },
+    otp:         { type: String, default: null },
     startedAt:   { type: Date, default: null },
     completedAt: { type: Date, default: null },
   },
