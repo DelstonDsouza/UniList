@@ -1,5 +1,4 @@
 // src/pages/rider/RiderSearching.jsx
-// Posts ride to backend → navigates to RiderWait with rideId
 
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
@@ -8,7 +7,6 @@ import { useEffect, useState, useRef } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { apiFetch } from "../../services/api"
 
-// Fix Leaflet icons
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -16,20 +14,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-// OSRM route polyline (no leaflet-routing-machine)
 function RoutePolyline({ from, to }) {
   const map = useMap()
   const [coords, setCoords] = useState([])
 
   useEffect(() => {
     if (!from || !to) return
-    const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`
+    const url = `/osrm/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`
     fetch(url)
       .then(r => r.json())
       .then(data => {
-        const route = data?.routes?.[0]
-        if (!route) return
-        const decoded = (route.geometry.coordinates || []).map(([lng, lat]) => [lat, lng])
+        const decoded = (data?.routes?.[0]?.geometry?.coordinates || []).map(([lng, lat]) => [lat, lng])
         setCoords(decoded)
         if (decoded.length > 1) {
           try { map.fitBounds(L.latLngBounds(decoded), { padding: [48, 48] }) } catch {}
@@ -42,48 +37,83 @@ function RoutePolyline({ from, to }) {
   return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5 }} />
 }
 
+// Unique key for this ride-post session — cleared on success or manual retry
+const POST_LOCK_KEY = "rider_posting_lock"
+
 export default function RiderSearching() {
   const location = useLocation()
   const navigate  = useNavigate()
+
   const {
     userLocation,
     collegeLocation,
     departureTime,
     departureTimeRaw,
+    riderName,
+    riderPhone,
+    scooterNumber,
   } = location.state || {}
 
-  const [status, setStatus]   = useState("posting") // posting | waiting | error
-  const [error,  setError]    = useState("")
-  const [dots,   setDots]     = useState("")
-  const rideIdRef             = useRef(null)
+  const [status, setStatus] = useState("posting")
+  const [error,  setError]  = useState("")
+  const [dots,   setDots]   = useState("")
+  const mountedRef = useRef(true)
 
-  // Animated dots
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
   useEffect(() => {
     const t = setInterval(() => setDots(p => p.length >= 3 ? "" : p + "."), 500)
     return () => clearInterval(t)
   }, [])
 
-  // Post ride on mount
   useEffect(() => {
     if (!userLocation || !collegeLocation) return
+
+    // ── StrictMode + fast-cancel+repost guard ────────────────────────────────
+    // sessionStorage survives StrictMode double-invoke but clears on tab close
+    if (sessionStorage.getItem(POST_LOCK_KEY) === "true") {
+      console.log("RiderSearching: post already in progress, skipping duplicate")
+      return
+    }
+    sessionStorage.setItem(POST_LOCK_KEY, "true")
 
     const postRide = async () => {
       try {
         setStatus("posting")
         const data = await apiFetch("/rides", {
-          method: "POST",
+          method:  "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            currentLat:   userLocation[0],
-            currentLng:   userLocation[1],
-            pickupLat:    userLocation[0],
-            pickupLng:    userLocation[1],
-            scooterNumber: "N/A",
+            riderName:     riderName     || "",
+            riderPhone:    riderPhone    || "",
+            scooterNumber: scooterNumber || "N/A",
+            currentLat:    userLocation[0],
+            currentLng:    userLocation[1],
+            pickupLat:     userLocation[0],
+            pickupLng:     userLocation[1],
+            departureTime: departureTimeRaw || null,
           }),
         })
-        rideIdRef.current = data?.data?.ride?._id
+
+        const rideId = data?.data?.ride?._id
+        if (!rideId) throw new Error("No ride ID returned from server")
+
+        sessionStorage.removeItem(POST_LOCK_KEY)  // clear lock on success
+
+        if (!mountedRef.current) return
         setStatus("waiting")
+
+        navigate(`/rider-wait/${rideId}`, {
+          state: { userLocation, collegeLocation, departureTime, departureTimeRaw },
+          replace: true,
+        })
+
       } catch (err) {
+        sessionStorage.removeItem(POST_LOCK_KEY)  // clear lock on error too
+        if (!mountedRef.current) return
         setError(err.message || "Failed to post ride")
         setStatus("error")
       }
@@ -91,20 +121,6 @@ export default function RiderSearching() {
 
     postRide()
   }, [])
-
-  // Once ride is posted, navigate to RiderWait
-  useEffect(() => {
-    if (status !== "waiting" || !rideIdRef.current) return
-    navigate(`/rider-wait/${rideIdRef.current}`, {
-      state: {
-        userLocation,
-        collegeLocation,
-        departureTime,
-        departureTimeRaw,
-      },
-      replace: true,
-    })
-  }, [status])
 
   if (!userLocation || !collegeLocation) {
     return (
@@ -138,9 +154,12 @@ export default function RiderSearching() {
         )}
         {status === "error" && (
           <>
-            <p className="text-red-500 font-medium">{error}</p>
+            <p className="text-red-500 font-medium text-center">{error}</p>
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                sessionStorage.removeItem(POST_LOCK_KEY)
+                navigate(-1)
+              }}
               className="mt-2 px-6 py-2 bg-gray-200 rounded-xl text-gray-700"
             >
               Go Back

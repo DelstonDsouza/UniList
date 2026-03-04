@@ -1,5 +1,4 @@
 // src/pages/rider/RideConfirmed.jsx
-// Shows real passenger details from ride — no fake data
 
 import { useEffect, useMemo, useCallback, useRef, useState } from "react"
 import { MapContainer, TileLayer, Polyline, useMap } from "react-leaflet"
@@ -7,7 +6,6 @@ import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useLocation, useNavigate } from "react-router-dom"
 
-// Fix Leaflet icons
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -15,29 +13,50 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-// Custom pin marker
+// ── Reverse geocode using Nominatim ──────────────────────────────────────────
+async function reverseGeocode(lat, lng) {
+  try {
+    const res  = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+      { headers: { "Accept-Language": "en" } }
+    )
+    const data = await res.json()
+    const a    = data.address || {}
+    const parts = [
+      a.road || a.pedestrian || a.footway || "",
+      a.neighbourhood || a.suburb || a.village || "",
+      a.city || a.town || a.county || "",
+    ].filter(Boolean)
+    return parts.length > 0 ? parts.join(", ") : data.display_name?.split(",").slice(0, 3).join(",").trim()
+  } catch {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+  }
+}
+
+// ── Custom pin marker ─────────────────────────────────────────────────────────
 function PinMarker({ position, color, emoji, label }) {
   const map = useMap()
   useEffect(() => {
     if (!position) return
     const icon = L.divIcon({
       className: "",
-      html: `<div style="background:${color};width:36px;height:36px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);
+      html: `<div style="background:${color};width:38px;height:38px;border-radius:50% 50% 50% 0;
+        transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.3);
         display:flex;align-items:center;justify-content:center;">
-        <span style="transform:rotate(45deg);font-size:14px">${emoji}</span></div>`,
-      iconSize: [36, 36], iconAnchor: [18, 36],
+        <span style="transform:rotate(45deg);font-size:15px">${emoji}</span></div>`,
+      iconSize: [38, 38], iconAnchor: [19, 38],
     })
     const m = L.marker(position, { icon }).addTo(map)
-    if (label) m.bindTooltip(label, { permanent: false, direction: "top" })
+    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -40],
+      className: "bg-white text-xs font-semibold px-2 py-1 rounded-lg shadow border-0" })
     return () => { try { m.remove() } catch {} }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
 
-// OSRM route polyline
+// ── OSRM road route polyline ──────────────────────────────────────────────────
 function RoutePolyline({ waypoints }) {
-  const map = useMap()
+  const map      = useMap()
   const [coords, setCoords] = useState([])
   const abortRef = useRef(null)
 
@@ -47,9 +66,12 @@ function RoutePolyline({ waypoints }) {
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
+
     const stops = pts.map(([lat, lng]) => `${lng},${lat}`).join(";")
-    fetch(`https://router.project-osrm.org/route/v1/driving/${stops}?overview=full&geometries=geojson`,
-      { signal: ctrl.signal })
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${stops}?overview=full&geometries=geojson`,
+      { signal: ctrl.signal }
+    )
       .then(r => r.json())
       .then(data => {
         const route = data?.routes?.[0]
@@ -57,17 +79,22 @@ function RoutePolyline({ waypoints }) {
         const decoded = (route.geometry.coordinates || []).map(([lng, lat]) => [lat, lng])
         setCoords(decoded)
         if (decoded.length > 1) {
-          try { map.fitBounds(L.latLngBounds(decoded), { padding: [48, 48], animate: true }) } catch {}
+          try { map.fitBounds(L.latLngBounds(decoded), { padding: [52, 52], animate: true }) } catch {}
         }
       })
       .catch(e => { if (e.name !== "AbortError") console.warn("Route error:", e) })
+
     return () => ctrl.abort()
   }, [waypoints.map(w => w?.join()).join("|"), map]) // eslint-disable-line
 
   if (coords.length < 2) return null
-  return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.85 }} />
+  return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.9 }} />
 }
 
+// ── St Aloysius fixed destination ─────────────────────────────────────────────
+const COLLEGE = [12.8698, 74.8425]
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function RideConfirmed() {
   const location = useLocation()
   const navigate  = useNavigate()
@@ -78,15 +105,44 @@ export default function RideConfirmed() {
     collegeLocation,
     departureTime,
     departureTimeRaw,
-    passengerName     = "Passenger",
-    passengerPhone    = "",
-    passengerLat      = null,
-    passengerLng      = null,
-    fare              = 0,
-    distanceKm        = 0,
+    passengerName  = "Passenger",
+    passengerPhone = "",
+    passengerLat   = null,
+    passengerLng   = null,
+    fare           = 0,
+    distanceKm     = 0,
   } = location.state || {}
 
-  const passengerPickup = passengerLat && passengerLng ? [passengerLat, passengerLng] : null
+  // Use St Aloysius as destination if collegeLocation not passed
+  const destination = collegeLocation || COLLEGE
+
+  const passengerPickup = passengerLat && passengerLng ? [Number(passengerLat), Number(passengerLng)] : null
+
+  // Readable addresses
+  const [riderAddress,     setRiderAddress]     = useState("Getting location…")
+  const [passengerAddress, setPassengerAddress] = useState("Getting location…")
+
+  useEffect(() => {
+    if (userLocation?.[0] && userLocation?.[1]) {
+      reverseGeocode(userLocation[0], userLocation[1]).then(setRiderAddress)
+    }
+  }, [userLocation?.[0], userLocation?.[1]]) // eslint-disable-line
+
+  useEffect(() => {
+    if (passengerLat && passengerLng) {
+      reverseGeocode(Number(passengerLat), Number(passengerLng)).then(setPassengerAddress)
+    } else {
+      setPassengerAddress("Location not available")
+    }
+  }, [passengerLat, passengerLng])
+
+  // Debug log
+  useEffect(() => {
+    console.log("RideConfirmed state:", {
+      passengerLat, passengerLng, passengerPickup,
+      userLocation, fare, distanceKm
+    })
+  }, [])
 
   // Departure time lock
   const [canDepart,   setCanDepart]   = useState(!departureTimeRaw)
@@ -94,37 +150,32 @@ export default function RideConfirmed() {
 
   useEffect(() => {
     if (!departureTimeRaw) { setCanDepart(true); return }
-
     const check = () => {
       const [h, m] = departureTimeRaw.split(":").map(Number)
       const target = new Date()
       target.setHours(h, m, 0, 0)
-      if (new Date() >= target) {
-        setCanDepart(true)
-        setDepartLabel("Now")
-      } else {
-        setCanDepart(false)
-        setDepartLabel(departureTime || departureTimeRaw)
-      }
+      if (new Date() >= target) { setCanDepart(true); setDepartLabel("Now") }
+      else { setCanDepart(false); setDepartLabel(departureTime || departureTimeRaw) }
     }
     check()
     const t = setInterval(check, 15000)
     return () => clearInterval(t)
   }, [departureTimeRaw, departureTime])
 
+  // Waypoints: rider → passenger → college
   const waypoints = useMemo(
-    () => [userLocation, passengerPickup, collegeLocation].filter(Boolean),
-    [userLocation, passengerPickup, collegeLocation]
+    () => [userLocation, passengerPickup, destination].filter(Boolean),
+    [userLocation, passengerPickup, destination]
   )
 
-  const center = userLocation ?? collegeLocation ?? [12.9141, 74.8560]
+  const center = userLocation ?? passengerPickup ?? destination
 
   const handleStartRide = useCallback(() => {
     navigate("/ride-pickup", {
       state: {
         rideId,
         userLocation,
-        collegeLocation,
+        collegeLocation: destination,
         passengerPickup,
         passengerName,
         passengerPhone,
@@ -133,7 +184,7 @@ export default function RideConfirmed() {
         departureTime,
       },
     })
-  }, [navigate, rideId, userLocation, collegeLocation, passengerPickup,
+  }, [navigate, rideId, userLocation, destination, passengerPickup,
       passengerName, passengerPhone, fare, distanceKm, departureTime])
 
   return (
@@ -142,19 +193,33 @@ export default function RideConfirmed() {
       {/* MAP */}
       <div style={{ height: "52vh", width: "100%", flexShrink: 0 }}>
         <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+          />
           <RoutePolyline waypoints={waypoints} />
-          {userLocation    && <PinMarker position={userLocation}    color="#2563EB" emoji="🏍" label="You" />}
-          {passengerPickup && <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />}
-          {collegeLocation && <PinMarker position={collegeLocation} color="#DC2626" emoji="🎓" label="College" />}
+
+          {/* 🏍 Rider */}
+          {userLocation && (
+            <PinMarker position={userLocation} color="#2563EB" emoji="🏍" label="You" />
+          )}
+
+          {/* 👤 Passenger pickup */}
+          {passengerPickup && (
+            <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />
+          )}
+
+          {/* 🎓 College destination */}
+          <PinMarker position={destination} color="#DC2626" emoji="🎓" label="St Aloysius" />
         </MapContainer>
       </div>
 
       {/* BOTTOM SHEET */}
-      <div className="flex-1 bg-white px-5 pt-5 pb-8 flex flex-col gap-4"
+      <div
+        className="flex-1 bg-white px-5 pt-5 pb-8 flex flex-col gap-4"
         style={{ borderRadius: "24px 24px 0 0", marginTop: -20,
-          boxShadow: "0 -4px 24px rgba(0,0,0,0.08)", position: "relative", zIndex: 10 }}>
-
+          boxShadow: "0 -4px 24px rgba(0,0,0,0.08)", position: "relative", zIndex: 10 }}
+      >
         {/* Handle */}
         <div className="flex justify-center -mt-1 mb-1">
           <div className="w-10 h-1 rounded-full bg-gray-200" />
@@ -171,27 +236,34 @@ export default function RideConfirmed() {
           <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-lg">✓</div>
         </div>
 
-        {/* Passenger card */}
-        <div className="rounded-2xl p-4" style={{ background: "#F0F9FF", border: "1.5px solid #BFDBFE" }}>
-          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-3">
-            Passenger Details
-          </p>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold"
-                style={{ background: "linear-gradient(135deg,#2563EB,#1D4ED8)" }}>
-                {passengerName.charAt(0).toUpperCase()}
+        {/* Route summary */}
+        <div className="rounded-2xl p-4 bg-gray-50 border border-gray-100 space-y-3">
+          <div className="flex gap-3 items-start">
+            <div className="flex flex-col items-center gap-1 pt-1">
+              <div className="w-3 h-3 rounded-full bg-blue-600" />
+              <div className="w-0.5 h-8 bg-gray-300" />
+              <div className="w-3 h-3 rounded-full bg-green-600" />
+              <div className="w-0.5 h-8 bg-gray-300" />
+              <div className="w-3 h-3 rounded-full bg-red-500" />
+            </div>
+            <div className="flex-1 space-y-4">
+              <div>
+                <p className="text-xs text-gray-400 font-medium">Your location</p>
+                <p className="text-sm font-semibold text-gray-800 leading-snug">{riderAddress}</p>
               </div>
               <div>
-                <p className="font-bold text-gray-900">{passengerName}</p>
+                <p className="text-xs text-gray-400 font-medium">Pickup — {passengerName}</p>
+                <p className="text-sm font-semibold text-gray-800 leading-snug">{passengerAddress}</p>
                 {passengerPhone && (
-                  <p className="text-sm text-gray-500">📞 {passengerPhone}</p>
+                  <a href={`tel:${passengerPhone}`}
+                    className="text-xs text-blue-600 font-medium mt-0.5 inline-block">
+                    📞 {passengerPhone}
+                  </a>
                 )}
-                {passengerPickup && (
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    📍 {passengerLat?.toFixed(4)}, {passengerLng?.toFixed(4)}
-                  </p>
-                )}
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 font-medium">Destination</p>
+                <p className="text-sm font-semibold text-gray-800">St Aloysius College, Mangalore</p>
               </div>
             </div>
           </div>
@@ -219,11 +291,11 @@ export default function RideConfirmed() {
           <span className="text-xl mt-0.5">🔐</span>
           <div>
             <p className="text-sm font-semibold text-amber-800">OTP Required at Pickup</p>
-            <p className="text-xs text-amber-700 mt-0.5">Ask your passenger for their 4-digit OTP.</p>
+            <p className="text-xs text-amber-700 mt-0.5">Ask your passenger for their 4-digit OTP when you arrive.</p>
           </div>
         </div>
 
-        {/* Go pick up button */}
+        {/* CTA */}
         <button
           onClick={handleStartRide}
           disabled={!canDepart}

@@ -5,8 +5,13 @@ import Ride from "../models/Ride.js"
 import User from "../models/User.js"
 import College from "../models/College.js"
 import { calculateFare } from "./fare.service.js"
+import { io } from "../index.js"
 
-const RADIUS_METERS = 3000  // 3 km hard cap
+const RADIUS_METERS = 3000
+
+// St Aloysius College, Mangalore — fallback destination
+const DEFAULT_COLLEGE_LAT = 12.8698
+const DEFAULT_COLLEGE_LNG = 74.8425
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id)
 
@@ -27,24 +32,24 @@ export async function getNearbyRides(passengerLat, passengerLng, collegeId) {
       $nearSphere: {
         $geometry: {
           type: "Point",
-          coordinates: [passengerLng, passengerLat],  // GeoJSON = [lng, lat]
+          coordinates: [passengerLng, passengerLat],
         },
         $maxDistance: RADIUS_METERS,
       },
     },
   }
 
-  if (isValidId(collegeId)) query.collegeId = collegeId  // only filter if valid ObjectId
+  if (isValidId(collegeId)) query.collegeId = collegeId
 
   const rides = await Ride.find(query)
-    .select("-passenger.phone -fare -__v")
+    .select("-__v")   // return everything except __v (keep fare, passenger visible to rider)
     .lean()
 
   return rides
 }
 
 // ─────────────────────────────────────────────────────────────
-// Lock a ride atomically — race-condition safe
+// Lock a ride atomically
 // ─────────────────────────────────────────────────────────────
 export async function lockRide(rideId, passenger, collegeId) {
   const passengerUser = await User.findById(passenger.userId)
@@ -62,29 +67,28 @@ export async function lockRide(rideId, passenger, collegeId) {
     err.code = "INVALID_LOCATION"; err.status = 400; throw err
   }
 
-  let collegeLat = null
-  let collegeLng = null
+  // Try to get college coordinates, fall back to St Aloysius
+  let collegeLat = DEFAULT_COLLEGE_LAT
+  let collegeLng = DEFAULT_COLLEGE_LNG
 
   if (isValidId(collegeId)) {
-    const college = await College.findById(collegeId)
-    if (!college) {
-      const err = new Error("College not found")
-      err.code = "COLLEGE_NOT_FOUND"; err.status = 404; throw err
-    }
-    collegeLat = college.location.coordinates[1]
-    collegeLng = college.location.coordinates[0]
+    try {
+      const college = await College.findById(collegeId)
+      if (college?.location?.coordinates) {
+        collegeLat = college.location.coordinates[1]
+        collegeLng = college.location.coordinates[0]
+      }
+    } catch { /* use default */ }
   }
 
   const { distanceKm, amount } = calculateFare(
     passenger.lat, passenger.lng,
-    collegeLat || passenger.lat,
-    collegeLng || passenger.lng
+    collegeLat, collegeLng
   )
 
-  const lockQuery = {
-    _id: rideId,
-    status: "pending",
-  }
+  console.log(`Fare calc: passenger(${passenger.lat},${passenger.lng}) → college(${collegeLat},${collegeLng}) = ${distanceKm}km ₹${amount}`)
+
+  const lockQuery = { _id: rideId, status: "pending" }
   if (isValidId(collegeId)) lockQuery.collegeId = collegeId
 
   const ride = await Ride.findOneAndUpdate(
@@ -95,14 +99,18 @@ export async function lockRide(rideId, passenger, collegeId) {
         lockedAt: new Date(),
         passenger: {
           userId: passenger.userId,
-          name: passenger.name,
-          phone: passenger.phone,
+          name:   passenger.name,
+          phone:  passenger.phone,
           location: {
             type: "Point",
             coordinates: [passenger.lng, passenger.lat],
           },
         },
-        fare: { distanceKm, amount, calculatedAt: new Date() },
+        fare: {
+          distanceKm,
+          amount,
+          calculatedAt: new Date(),
+        },
       },
     },
     { new: true, runValidators: true }
@@ -115,6 +123,20 @@ export async function lockRide(rideId, passenger, collegeId) {
 
   await User.findByIdAndUpdate(passenger.userId, {
     $set: { activeRideId: ride._id },
+  })
+
+  // Notify all passengers watching — remove this ride from their list
+  io.to("riders-watch").emit("ride:locked", { rideId: String(ride._id) })
+
+  // Notify rider instantly via Socket.io — no polling needed
+  io.to(`ride:${ride._id}`).emit("ride:locked", {
+    rideId:         String(ride._id),
+    passengerName:  ride.passenger.name,
+    passengerPhone: ride.passenger.phone,
+    passengerLat:   passenger.lat,
+    passengerLng:   passenger.lng,
+    fare:           ride.fare.amount,
+    distanceKm:     ride.fare.distanceKm,
   })
 
   return ride
@@ -197,7 +219,7 @@ export async function rejectPassenger(rideId, riderId) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Get passenger's current active ride (for polling)
+// Get passenger's current active ride
 // ─────────────────────────────────────────────────────────────
 export async function getPassengerActiveRide(userId) {
   const user = await User.findById(userId).select("activeRideId")
