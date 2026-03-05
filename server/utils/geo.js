@@ -45,25 +45,59 @@ export function generateOTP() {
   return Math.floor(1000 + Math.random() * 9000).toString()
 }
 
-// ── Route-based matching helpers ─────────────────────────────────────────────
+// ── In-memory route cache ─────────────────────────────────────────────────────
+// Key: "lat,lng→lat,lng" (rounded to 4dp to reuse nearby coords)
+// TTL: 10 minutes — routes don't change, this prevents hammering OSRM
+const routeCache    = new Map()
+const CACHE_TTL_MS  = 10 * 60 * 1000   // 10 minutes
+
+function cacheKey(fromLat, fromLng, toLat, toLng) {
+  const r = (n) => Number(n).toFixed(4)
+  return `${r(fromLat)},${r(fromLng)}->${r(toLat)},${r(toLng)}`
+}
 
 /**
- * Fetch OSRM route between two points.
- * Returns array of [lat, lng] waypoints or null on failure.
+ * Fetch OSRM route between two points, with in-memory cache + one retry.
+ * Returns array of [lat, lng] waypoints, or null on failure.
  */
 export async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng) {
-  try {
-    const url =
-      `https://router.project-osrm.org/route/v1/driving/` +
-      `${fromLng},${fromLat};${toLng},${toLat}` +
-      `?overview=full&geometries=geojson`
+  const key     = cacheKey(fromLat, fromLng, toLat, toLng)
+  const cached  = routeCache.get(key)
+
+  // Return cached result if still fresh
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    return cached.points
+  }
+
+  const url =
+    `https://router.project-osrm.org/route/v1/driving/` +
+    `${fromLng},${fromLat};${toLng},${toLat}` +
+    `?overview=full&geometries=geojson`
+
+  const attemptFetch = async () => {
     const res  = await fetch(url, { signal: AbortSignal.timeout(8000) })
     const data = await res.json()
     const coords = data?.routes?.[0]?.geometry?.coordinates
     if (!coords?.length) return null
     // OSRM returns [lng, lat] — convert to [lat, lng]
     return coords.map(([lng, lat]) => [lat, lng])
+  }
+
+  try {
+    let points = await attemptFetch()
+
+    // One retry after 1s if first attempt fails
+    if (!points) {
+      await new Promise(r => setTimeout(r, 1000))
+      points = await attemptFetch()
+    }
+
+    // Cache result (even null, to avoid hammering on bad coords)
+    routeCache.set(key, { points, ts: Date.now() })
+    return points
   } catch {
+    // Cache null briefly to avoid retry storm
+    routeCache.set(key, { points: null, ts: Date.now() })
     return null
   }
 }
@@ -76,7 +110,6 @@ export async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng) {
  *   nearestLng   – lng of the closest projected point on the route
  *   distanceKm   – straight-line distance from passenger to nearest route point
  *   routeIndex   – index of the segment start where the nearest point was found
- *                  (used by ride.service.js to check passenger is ahead of rider)
  */
 export function nearestPointOnRoute(routePoints, passengerLat, passengerLng) {
   let bestDist  = Infinity
@@ -106,7 +139,7 @@ export function nearestPointOnRoute(routePoints, passengerLat, passengerLng) {
       bestDist  = dist
       bestLat   = projLat
       bestLng   = projLng
-      bestIndex = i   // ✅ track which segment the nearest point belongs to
+      bestIndex = i
     }
   }
 
@@ -114,7 +147,7 @@ export function nearestPointOnRoute(routePoints, passengerLat, passengerLng) {
     nearestLat:  bestLat,
     nearestLng:  bestLng,
     distanceKm:  Number(bestDist.toFixed(3)),
-    routeIndex:  bestIndex,   // ✅ returned for ahead-of-rider check
+    routeIndex:  bestIndex,
   }
 }
 

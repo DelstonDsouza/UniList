@@ -21,53 +21,108 @@ function generateOTP() {
   return Math.floor(1000 + Math.random() * 9000).toString()
 }
 
+// ── Per-ride route cache ──────────────────────────────────────────────────────
+const rideRouteCache = new Map()
+const ROUTE_TTL_MS   = 10 * 60 * 1000  // 10 min
+
+function getCachedRoute(rideId) {
+  const entry = rideRouteCache.get(String(rideId))
+  if (!entry) return undefined
+  if (Date.now() - entry.ts > ROUTE_TTL_MS) { rideRouteCache.delete(String(rideId)); return undefined }
+  return entry.points
+}
+
+function setCachedRoute(rideId, points) {
+  rideRouteCache.set(String(rideId), { points, ts: Date.now() })
+}
+
+export function clearRideRouteCache(rideId) {
+  rideRouteCache.delete(String(rideId))
+}
+
+// ── Core matching logic ───────────────────────────────────────────────────────
 async function getPickupInfo(ride, passengerLat, passengerLng) {
   const riderLat = ride.currentLocation?.coordinates?.[1]
   const riderLng = ride.currentLocation?.coordinates?.[0]
   if (!riderLat || !riderLng) return null
 
+  // Quick pre-filter: no point fetching route if passenger is very far
   const directDistToRider = haversineKm(riderLat, riderLng, passengerLat, passengerLng)
-  if (directDistToRider > 10) return null
+  if (directDistToRider > 15) return null
 
-  const routePoints = await fetchOSRMRoute(riderLat, riderLng, COLLEGE.lat, COLLEGE.lng)
+  // Fetch (or use cached) OSRM route: rider → college
+  let routePoints = getCachedRoute(ride._id)
+  if (routePoints === undefined) {
+    routePoints = await fetchOSRMRoute(riderLat, riderLng, COLLEGE.lat, COLLEGE.lng)
+    setCachedRoute(ride._id, routePoints)
+  }
 
+  // ── OSRM unavailable: fallback to straight-line 3km radius ───────────────
   if (!routePoints) {
-    if (directDistToRider > 2) return null
+    if (directDistToRider > 3) return null
     const { km, fare } = calculateFare(passengerLat, passengerLng)
     return {
-      distanceKm: km, fareAmount: fare, distToRoute: 0,
+      distanceKm: km, fareAmount: fare,
+      distToRoute: Number(directDistToRider.toFixed(3)),
       pickupLat: passengerLat, pickupLng: passengerLng,
-      needsToWalkToRoute: false, nearestRouteLat: null, nearestRouteLng: null,
+      needsToWalkToRoute: false,
+      nearestRouteLat: null, nearestRouteLng: null,
+      passengerActualLat: passengerLat, passengerActualLng: passengerLng,
       osrmAvailable: false,
     }
   }
 
-  const { nearestLat, nearestLng, distanceKm: distToRoute } =
-    nearestPointOnRoute(routePoints, passengerLat, passengerLng)
+  // ── Find nearest point on route for PASSENGER ─────────────────────────────
+  const passengerNearest = nearestPointOnRoute(routePoints, passengerLat, passengerLng)
+  const distToRoute      = passengerNearest.distanceKm
 
+  // Case 3: passenger > 2km from route → not eligible
   if (distToRoute > 2) return null
 
-  const riderToCollege   = haversineKm(riderLat, riderLng, COLLEGE.lat, COLLEGE.lng)
-  const nearestToCollege = haversineKm(nearestLat, nearestLng, COLLEGE.lat, COLLEGE.lng)
-  if (nearestToCollege > riderToCollege + 0.1) return null
+  // ── Direction check using route index ─────────────────────────────────────
+  // The OSRM route runs: rider(index 0) → ... → college(index max)
+  // Higher index = closer to college = AHEAD on the route.
+  //
+  // Find where the rider projects onto their own route.
+  // The passenger's route index must be >= rider's route index,
+  // meaning the passenger is ahead of (or level with) the rider.
+  // If passenger index < rider index, the passenger is BEHIND the rider
+  // (rider would have to turn back to pick them up) → reject.
+  //
+  // DIRECTION_SLACK: allow 2 segments of tolerance for GPS noise.
+  const riderNearest     = nearestPointOnRoute(routePoints, riderLat, riderLng)
+  const DIRECTION_SLACK  = 2
 
+  if (passengerNearest.routeIndex < riderNearest.routeIndex - DIRECTION_SLACK) {
+    console.log(
+      `[pickup] DIRECTION FAIL — passenger idx=${passengerNearest.routeIndex} ` +
+      `rider idx=${riderNearest.routeIndex} → passenger is BEHIND rider, rejecting`
+    )
+    return null
+  }
+
+  // ── Pickup point decision ─────────────────────────────────────────────────
   const { km, fare } = calculateFare(passengerLat, passengerLng)
 
   if (distToRoute <= 1) {
+    // Case 1: within 1km of route → pick up at passenger's actual location
     return {
       distanceKm: km, fareAmount: fare,
       distToRoute: Number(distToRoute.toFixed(3)),
       pickupLat: passengerLat, pickupLng: passengerLng,
-      needsToWalkToRoute: false, nearestRouteLat: null, nearestRouteLng: null,
+      needsToWalkToRoute: false,
+      nearestRouteLat: null, nearestRouteLng: null,
+      passengerActualLat: passengerLat, passengerActualLng: passengerLng,
       osrmAvailable: true,
     }
   } else {
+    // Case 2: 1–2km from route → passenger must walk to nearest route point
     return {
       distanceKm: km, fareAmount: fare,
       distToRoute: Number(distToRoute.toFixed(3)),
-      pickupLat: nearestLat, pickupLng: nearestLng,
+      pickupLat: passengerNearest.nearestLat, pickupLng: passengerNearest.nearestLng,
       needsToWalkToRoute: true,
-      nearestRouteLat: nearestLat, nearestRouteLng: nearestLng,
+      nearestRouteLat: passengerNearest.nearestLat, nearestRouteLng: passengerNearest.nearestLng,
       passengerActualLat: passengerLat, passengerActualLng: passengerLng,
       osrmAvailable: true,
     }
@@ -120,7 +175,6 @@ export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
 }
 
 // ── START RIDE ────────────────────────────────────────────────────────────────
-// Accepts both "locked" and "pickup_started" — rider may click start from either state
 export async function startRide(rideId, riderId) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
   if (!ride) throw httpError("Ride not found.", 404)
@@ -129,6 +183,7 @@ export async function startRide(rideId, riderId) {
   ride.status    = "ongoing"
   ride.startedAt = new Date()
   await ride.save()
+  clearRideRouteCache(rideId)
   return ride
 }
 
@@ -142,6 +197,7 @@ export async function completeRide(rideId, riderId, paymentMethod) {
   ride.payment.method = paymentMethod || "cash"
   ride.payment.status = "paid"
   await ride.save()
+  clearRideRouteCache(rideId)
   return ride
 }
 

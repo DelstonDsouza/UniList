@@ -6,6 +6,20 @@ import { socket, connectSocket, disconnectSocket } from "../services/socket"
 
 const RideContext = createContext(null)
 
+function mergeRiders(prev, next) {
+  if (prev.length !== next.length) return next
+  const sameContent = next.every((newRide, i) => {
+    const old = prev[i]
+    return (
+      old &&
+      old._id         === newRide._id &&
+      old.status      === newRide.status &&
+      old.distToRoute === newRide.distToRoute
+    )
+  })
+  return sameContent ? prev : next
+}
+
 export function RideProvider({ children }) {
   const [viewState,        setViewState]        = useState("discovery")
   const [nearbyRiders,     setNearbyRiders]     = useState([])
@@ -20,6 +34,7 @@ export function RideProvider({ children }) {
   const userLocationRef = useRef(null)
   const activeRideRef   = useRef(null)
   const viewStateRef    = useRef("discovery")
+  const fetchingRef     = useRef(false)
 
   useEffect(() => { activeRideRef.current = activeRide }, [activeRide])
   useEffect(() => { viewStateRef.current  = viewState  }, [viewState])
@@ -40,8 +55,6 @@ export function RideProvider({ children }) {
   }, [])
 
   // ── Map DB ride status → viewState ────────────────────────────────────────
-  // "locked" and "pickup_started" both = passenger waiting → "waiting"
-  // This ensures OTP and ETA always show correctly
   function statusToView(status) {
     if (status === "locked")         return "waiting"
     if (status === "pickup_started") return "waiting"
@@ -67,16 +80,24 @@ export function RideProvider({ children }) {
   }, [])
 
   // ── Fetch nearby riders ───────────────────────────────────────────────────
+  // ✅ Always uses the coords passed in — never falls back to GPS silently
   const fetchRiders = useCallback(async (loc) => {
-    const coords = loc || userLocationRef.current
-    if (!coords || !getToken()) return
+    if (!loc) return
+    if (!getToken()) return
+    if (fetchingRef.current) return
+    fetchingRef.current = true
     setLoadingRiders(true)
     try {
-      const [lat, lng] = coords
-      const data = await apiFetch(`/rides/nearby?lat=${lat}&lng=${lng}`)
-      setNearbyRiders(data?.rides || data?.data?.rides || [])
-    } catch { /* ignore */ }
-    finally { setLoadingRiders(false) }
+      const [lat, lng] = loc
+      const data  = await apiFetch(`/rides/nearby?lat=${lat}&lng=${lng}`)
+      const fresh = data?.rides || data?.data?.rides || []
+      setNearbyRiders(prev => mergeRiders(prev, fresh))
+    } catch {
+      // Silently ignore transient errors
+    } finally {
+      fetchingRef.current = false
+      setLoadingRiders(false)
+    }
   }, [])
 
   // ── Socket setup ──────────────────────────────────────────────────────────
@@ -103,15 +124,22 @@ export function RideProvider({ children }) {
         Math.cos((loc[0] * Math.PI) / 180) *
         Math.cos((riderLat * Math.PI) / 180) *
         Math.sin(dLng / 2) ** 2
-      if (2 * R * Math.asin(Math.sqrt(a)) <= 5) {
-        setNearbyRiders(prev => prev.find(r => r._id === ride._id) ? prev : [ride, ...prev])
+      const distKm = 2 * R * Math.asin(Math.sqrt(a))
+      // Add tentatively — PassengerDashboard will re-fetch with correct location
+      if (distKm <= 5) {
+        setNearbyRiders(prev =>
+          prev.find(r => r._id === ride._id) ? prev : [ride, ...prev]
+        )
       }
     }
 
-    const handleRideRemoved   = ({ rideId }) => setNearbyRiders(prev => prev.filter(r => r._id !== rideId))
-    const handleRideCancelled = () => { setActiveRide(null); setFareInfo(null); setViewState("discovery") }
+    const handleRideRemoved   = ({ rideId }) =>
+      setNearbyRiders(prev => prev.filter(r => r._id !== rideId))
 
-    // ✅ Both pickup_started and locked → "waiting" so OTP is always visible
+    const handleRideCancelled = () => {
+      setActiveRide(null); setFareInfo(null); setViewState("discovery")
+    }
+
     const handlePickupStarted = () => setViewState("waiting")
     const handleRideStarted   = () => setViewState("ongoing")
     const handleRideCompleted = () => setViewState("completed")
@@ -136,15 +164,10 @@ export function RideProvider({ children }) {
       socket.off("ride:completed",      handleRideCompleted)
       disconnectSocket(true)
     }
-  }, [])
+  }, [fetchRiders])
 
-  // ── Fetch riders when GPS ready ───────────────────────────────────────────
-  useEffect(() => {
-    if (!userLocation) return
-    fetchRiders(userLocation)
-    const t = setInterval(() => fetchRiders(userLocation), 30000)
-    return () => clearInterval(t)
-  }, [userLocation, fetchRiders])
+  // ── NO auto-poll here — PassengerDashboard drives fetchRiders ────────────
+  // This prevents the GPS-only fetch that ignored the map-selected location
 
   // ── Join active ride socket room ──────────────────────────────────────────
   useEffect(() => {
@@ -152,7 +175,7 @@ export function RideProvider({ children }) {
     socket.emit("join:passenger", activeRide._id)
   }, [activeRide?._id])
 
-  // ── Fallback poll ─────────────────────────────────────────────────────────
+  // ── Fallback poll for active ride status ──────────────────────────────────
   useEffect(() => {
     if (viewState === "discovery" || viewState === "completed") return
     const poll = setInterval(async () => {
@@ -164,7 +187,6 @@ export function RideProvider({ children }) {
           if (vs !== "discovery") { setViewState("discovery"); setActiveRide(null) }
           return
         }
-        // Always refresh so otp stays current
         const prev = activeRideRef.current
         if (!prev || prev._id !== ride._id || prev.status !== ride.status || prev.otp !== ride.otp) {
           setActiveRide(ride)
@@ -185,9 +207,9 @@ export function RideProvider({ children }) {
     try {
       const [lat, lng] = location
       const data = await apiFetch(`/rides/${rideId}/request`, {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passengerLat: lat, passengerLng: lng, name: passengerName, phone: passengerPhone }),
+        body:    JSON.stringify({ passengerLat: lat, passengerLng: lng, name: passengerName, phone: passengerPhone }),
       })
       const ride = data?.ride || data?.data?.ride
       if (!ride) throw new Error("Unexpected server response")
@@ -201,12 +223,10 @@ export function RideProvider({ children }) {
     }
   }
 
-  // ✅ After fare screen → go to "waiting" (shows OTP + live map)
   const acknowledgeFare  = () => setViewState("waiting")
-
   const resetToDiscovery = () => {
     setActiveRide(null); setFareInfo(null)
-    setViewState("discovery"); fetchRiders()
+    setViewState("discovery")
   }
 
   if (restoringRide) return (
@@ -224,6 +244,7 @@ export function RideProvider({ children }) {
       userLocation, locationError,
       activeRide, fareInfo, requestingRideId,
       requestRide, acknowledgeFare, resetToDiscovery,
+      fetchRiders,  // ✅ exposed so PassengerDashboard can call with correct location
     }}>
       {children}
     </RideContext.Provider>

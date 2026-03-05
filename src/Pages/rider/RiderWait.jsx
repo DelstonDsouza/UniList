@@ -1,7 +1,7 @@
 // src/pages/rider/RiderWait.jsx
 
 import { useEffect, useState, useRef } from "react"
-import { MapContainer, TileLayer, Marker } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useParams, useLocation, useNavigate } from "react-router-dom"
@@ -22,6 +22,44 @@ const pickupIcon = new L.DivIcon({
     <span style="transform:rotate(45deg);font-size:15px">📍</span></div>`,
   className: "", iconSize: [36, 36], iconAnchor: [18, 36],
 })
+
+const collegeIcon = new L.DivIcon({
+  html: `<div style="background:#0d9488;color:white;border-radius:50% 50% 50% 0;
+    transform:rotate(-45deg);width:36px;height:36px;border:3px solid white;
+    box-shadow:0 3px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
+    <span style="transform:rotate(45deg);font-size:15px">🎓</span></div>`,
+  className: "", iconSize: [36, 36], iconAnchor: [18, 36],
+})
+
+// ── Fetches OSRM route and draws blue polyline ────────────────────────────────
+function RoutePolyline({ from, to }) {
+  const map    = useMap()
+  const [coords, setCoords] = useState([])
+
+  useEffect(() => {
+    if (!from || !to) return
+    const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        const decoded = (data?.routes?.[0]?.geometry?.coordinates || [])
+          .map(([lng, lat]) => [lat, lng])
+        setCoords(decoded)
+        if (decoded.length > 1) {
+          try { map.fitBounds(L.latLngBounds(decoded), { padding: [60, 60] }) } catch {}
+        }
+      })
+      .catch(() => {})
+  }, [from, to, map])
+
+  if (coords.length < 2) return null
+  return (
+    <Polyline
+      positions={coords}
+      pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.85 }}
+    />
+  )
+}
 
 export default function RiderWait() {
   const { id }   = useParams()
@@ -77,17 +115,15 @@ export default function RiderWait() {
   }, [id])
 
   // ── GPS watch — only broadcasts live location to passenger via socket ─────
-  // Does NOT update any map state — pickup pin is fixed from RiderHome
   useEffect(() => {
     if (!id || !navigator.geolocation) return
 
     watchIdRef.current = navigator.geolocation.watchPosition(
-      () => {}, // no state update — map stays fixed on pickup pin
+      () => {},
       () => {},
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
     )
 
-    // Emit live location to passenger every 4s
     locationEmitRef.current = setInterval(() => {
       if (!socket.connected) return
       navigator.geolocation.getCurrentPosition(
@@ -109,8 +145,8 @@ export default function RiderWait() {
     }
   }, [id])
 
-  // Pickup pin = what rider chose on map in RiderHome — fixed, never changes
-  const pickupCoords = userLocation || [12.9141, 74.8560]
+  const pickupCoords  = userLocation    || [12.9141, 74.8560]
+  const collegeCoords = collegeLocation || [12.8721, 74.8453]
 
   return (
     <div className="fixed inset-0 bg-white overflow-hidden">
@@ -158,13 +194,27 @@ export default function RiderWait() {
         </div>
       </div>
 
-      {/* MAP — single pickup pin only */}
+      {/* MAP — route from pickup → college */}
       <div className="absolute top-0 left-0 right-0 h-[55vh] z-0">
-        <MapContainer center={pickupCoords} zoom={14} zoomControl={false}
-          style={{ height: "100%", width: "100%" }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+        <MapContainer
+          center={pickupCoords}
+          zoom={13}
+          zoomControl={false}
+          style={{ height: "100%", width: "100%" }}
+        >
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+          />
+
+          {/* Pickup marker — rider's chosen location */}
           <Marker position={pickupCoords} icon={pickupIcon} />
+
+          {/* College destination marker */}
+          <Marker position={collegeCoords} icon={collegeIcon} />
+
+          {/* Blue route polyline pickup → college */}
+          <RoutePolyline from={pickupCoords} to={collegeCoords} />
         </MapContainer>
       </div>
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap, useMapEvents } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import toast from "react-hot-toast"
 import L from "leaflet"
@@ -110,8 +110,6 @@ function Stars({ rating = 0 }) {
   )
 }
 
-// ── Reusable UI pieces ────────────────────────────────────────────────────────
-
 function Avatar({ name, size = "sm" }) {
   const initials = name
     ? name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
@@ -179,7 +177,6 @@ function BottomNav({ tab, setTab }) {
   )
 }
 
-// ── Header — defined OUTSIDE main component to prevent remount on state change ──
 function Header({ firstName, fullName, showDropdown, setShowDropdown, dropdownRef, setNavTab, setShowRiderModal, handleLogout }) {
   return (
     <div className="flex items-center justify-between px-4 pt-5 pb-3 bg-white shadow-sm">
@@ -192,24 +189,18 @@ function Header({ firstName, fullName, showDropdown, setShowDropdown, dropdownRe
         </button>
         {showDropdown && (
           <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 z-[9999] overflow-hidden">
-            <button
-              onClick={() => { setShowDropdown(false); setNavTab("account") }}
-              className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition"
-            >
+            <button onClick={() => { setShowDropdown(false); setNavTab("account") }}
+              className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition">
               <span>👤</span> View Profile
             </button>
             <div className="border-t border-gray-100" />
-            <button
-              onClick={() => { setShowDropdown(false); setShowRiderModal(true) }}
-              className="w-full text-left px-4 py-3 text-sm text-teal-700 hover:bg-teal-50 flex items-center gap-2 transition"
-            >
+            <button onClick={() => { setShowDropdown(false); setShowRiderModal(true) }}
+              className="w-full text-left px-4 py-3 text-sm text-teal-700 hover:bg-teal-50 flex items-center gap-2 transition">
               <span>🛵</span> Be a Rider
             </button>
             <div className="border-t border-gray-100" />
-            <button
-              onClick={handleLogout}
-              className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition"
-            >
+            <button onClick={handleLogout}
+              className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition">
               <span>🚪</span> Logout
             </button>
           </div>
@@ -219,16 +210,12 @@ function Header({ firstName, fullName, showDropdown, setShowDropdown, dropdownRe
   )
 }
 
-// ── Be a Rider modal ──────────────────────────────────────────────────────────
 function BeARiderModal({ onClose, onSubmit, loading }) {
   const [licenseNo, setLicenseNo] = useState("")
   const [vehicleNo, setVehicleNo] = useState("")
 
   const handleSubmit = () => {
-    if (!licenseNo.trim() || !vehicleNo.trim()) {
-      toast.error("Please fill in both fields")
-      return
-    }
+    if (!licenseNo.trim() || !vehicleNo.trim()) { toast.error("Please fill in both fields"); return }
     onSubmit({ licenseNo: licenseNo.trim().toUpperCase(), vehicleNo: vehicleNo.trim().toUpperCase() })
   }
 
@@ -240,36 +227,25 @@ function BeARiderModal({ onClose, onSubmit, loading }) {
             <h2 className="text-lg font-bold text-gray-900">Become a Rider</h2>
             <p className="text-xs text-gray-400 mt-0.5">Register your vehicle to start giving rides</p>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition text-gray-600 font-bold">
-            ✕
-          </button>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition text-gray-600 font-bold">✕</button>
         </div>
         <div className="px-6 py-5 space-y-4">
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">🪪 Driving License Number</label>
-            <input type="text" value={licenseNo}
-              onChange={e => setLicenseNo(e.target.value.toUpperCase())}
+            <input type="text" value={licenseNo} onChange={e => setLicenseNo(e.target.value.toUpperCase())}
               placeholder="e.g. KA05 20210012345"
-              className="w-full bg-gray-100 p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
+              className="w-full bg-gray-100 p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">🚗 Vehicle Number Plate</label>
-            <input type="text" value={vehicleNo}
-              onChange={e => setVehicleNo(e.target.value.toUpperCase())}
+            <input type="text" value={vehicleNo} onChange={e => setVehicleNo(e.target.value.toUpperCase())}
               placeholder="e.g. KA 19 AB 1234"
-              className="w-full bg-gray-100 p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
+              className="w-full bg-gray-100 p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
           </div>
         </div>
         <div className="px-6 pb-6 flex gap-3">
-          <button onClick={onClose}
-            className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
-            Cancel
-          </button>
-          <button onClick={handleSubmit} disabled={loading}
-            className="flex-1 py-3 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 transition">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
+          <button onClick={handleSubmit} disabled={loading} className="flex-1 py-3 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 transition">
             {loading ? "Submitting…" : "Register as Rider"}
           </button>
         </div>
@@ -278,7 +254,6 @@ function BeARiderModal({ onClose, onSubmit, loading }) {
   )
 }
 
-// ── Rider card ────────────────────────────────────────────────────────────────
 function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerProfile }) {
   const [confirming, setConfirming] = useState(false)
 
@@ -289,6 +264,9 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
     : null
 
   const pickupArea = ride.locationName || ride.pickupArea || "—"
+  const rating = ride.ratingCount > 0
+    ? (ride.ratingSum / ride.ratingCount).toFixed(1)
+    : ride.rating || 0
 
   const handleConfirm = () => {
     if (!passengerProfile) { toast.error("Profile not loaded yet."); return }
@@ -307,7 +285,7 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
           </div>
           <div>
             <p className="font-bold text-gray-900 text-base">{ride.riderName || "—"}</p>
-            <Stars rating={ride.rating || 0} />
+            <Stars rating={rating} />
           </div>
         </div>
         {dist !== null && (
@@ -316,10 +294,32 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
           </span>
         )}
       </div>
+
       <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2">
         <span>📍</span>
         <span className="font-medium">{pickupArea}</span>
       </div>
+
+      {ride.needsToWalkToRoute && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+          <span className="text-red-500 text-base mt-0.5">🚶</span>
+          <div>
+            <p className="text-xs font-semibold text-red-600">Walk to pickup point required</p>
+            <p className="text-xs text-red-400 mt-0.5">
+              You are <strong>{ride.distToRoute?.toFixed(2)} km</strong> from this route.
+              Walk to the red marker shown on the map for pickup.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!ride.needsToWalkToRoute && ride.distToRoute != null && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-3 py-2">
+          <span className="text-green-500 text-sm">✓</span>
+          <p className="text-xs text-green-600 font-medium">You are on this route — direct pickup</p>
+        </div>
+      )}
+
       {!confirming ? (
         <button onClick={() => setConfirming(true)} disabled={requesting}
           className="w-full py-3 rounded-xl bg-gray-900 text-white text-base font-semibold hover:bg-gray-700 active:scale-95 transition disabled:opacity-50">
@@ -348,6 +348,7 @@ export default function PassengerDashboard() {
   const {
     viewState, nearbyRiders, loadingRiders,
     userLocation, locationError, requestRide, requestingRideId,
+    fetchRiders,  // ✅ pulled from context
   } = useRide()
 
   const [navTab,            setNavTab]            = useState("home")
@@ -374,33 +375,41 @@ export default function PassengerDashboard() {
   const debTimer     = useRef(null)
   const dropRef      = useRef(null)
   const dropdownRef  = useRef(null)
+  const pollRef      = useRef(null)
   const storedUser   = JSON.parse(localStorage.getItem("user") || "{}")
 
-  // Load profile
   useEffect(() => {
     apiFetch("/auth/me")
       .then(data => setPassengerProfile(data.user || data))
       .catch(() => {})
   }, [])
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
-        setShowDropdown(false)
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowDropdown(false)
     }
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  // Location from context
+  // ── Seed passengerLocation from GPS on first load ─────────────────────────
   useEffect(() => {
     if (!userLocation || passengerLocation) return
     setPassengerLocation(userLocation)
     reverseGeocode(userLocation[0], userLocation[1]).then(setLocationName)
   }, [userLocation])
 
-  // Autocomplete
+  // ✅ KEY FIX: fetch riders every time passengerLocation changes
+  // Also set up a 60s poll using the current passengerLocation
+  useEffect(() => {
+    if (!passengerLocation) return
+    fetchRiders(passengerLocation)
+
+    clearInterval(pollRef.current)
+    pollRef.current = setInterval(() => fetchRiders(passengerLocation), 60000)
+    return () => clearInterval(pollRef.current)
+  }, [passengerLocation, fetchRiders])
+
   useEffect(() => {
     if (!isUserTyping.current) return
     clearTimeout(debTimer.current)
@@ -424,11 +433,9 @@ export default function PassengerDashboard() {
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  // Load history when tab opens
   useEffect(() => {
     if (navTab !== "history") return
-    setHistoryLoad(true)
-    setHistoryErr("")
+    setHistoryLoad(true); setHistoryErr("")
     const userId = passengerProfile?._id || storedUser?.uid || ""
     apiFetch(`/rides/history?passengerId=${userId}`)
       .then(data => setHistory(Array.isArray(data.rides) ? data.rides : []))
@@ -446,9 +453,8 @@ export default function PassengerDashboard() {
     setRiderRegLoading(true)
     try {
       await apiFetch("/rider/register", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ licenseNo, vehicleNo }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ licenseNo, vehicleNo }),
       })
       toast.success("Rider registration submitted!")
       setShowRiderModal(false)
@@ -465,9 +471,8 @@ export default function PassengerDashboard() {
     setEditLoading(true); setEditMsg("")
     try {
       await apiFetch("/auth/profile", {
-        method:  "PUT",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email: editEmail.trim().toLowerCase() }),
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: editEmail.trim().toLowerCase() }),
       })
       setPassengerProfile(prev => ({ ...prev, email: editEmail.trim().toLowerCase() }))
       setEditMsg("Email updated successfully!")
@@ -530,7 +535,11 @@ export default function PassengerDashboard() {
     return new Date(dateStr).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
   }
 
-  // shared header props
+  const walkRide = nearbyRiders.find(r =>
+    r.needsToWalkToRoute && r.pickupLat && r.pickupLng &&
+    r.passengerActualLat && r.passengerActualLng
+  )
+
   const headerProps = {
     firstName, fullName, showDropdown, setShowDropdown,
     dropdownRef, setNavTab, setShowRiderModal, handleLogout,
@@ -570,13 +579,8 @@ export default function PassengerDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100 pb-24">
-
       {showRiderModal && (
-        <BeARiderModal
-          onClose={() => setShowRiderModal(false)}
-          onSubmit={handleRiderRegister}
-          loading={riderRegLoading}
-        />
+        <BeARiderModal onClose={() => setShowRiderModal(false)} onSubmit={handleRiderRegister} loading={riderRegLoading} />
       )}
 
       <Header {...headerProps} />
@@ -584,6 +588,7 @@ export default function PassengerDashboard() {
       {/* ══════════════════ HOME TAB ══════════════════ */}
       {navTab === "home" && (
         <>
+          {/* Location picker */}
           <div className="mx-4 mt-4 mb-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3">
               <p className="text-xs text-gray-400 font-medium mb-2">Your pickup location</p>
@@ -623,7 +628,15 @@ export default function PassengerDashboard() {
             </div>
           </div>
 
-          <div className="mx-4 rounded-3xl overflow-hidden shadow-sm" style={{ height: showMapPicker ? 260 : 180, zIndex: 10 }}>
+          {/* Map */}
+          <div className="mx-4 rounded-3xl overflow-hidden shadow-sm relative"
+            style={{ height: showMapPicker ? 260 : 200, zIndex: 10 }}>
+            {walkRide && (
+              <div className="absolute top-2 left-2 z-[999] bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 shadow-sm border border-red-100 flex items-center gap-2">
+                <span className="w-4 h-0.5 bg-red-500 inline-block rounded" style={{ borderTop: "2px dashed #ef4444" }} />
+                <span className="text-[10px] font-semibold text-red-600">Walk to pickup</span>
+              </div>
+            )}
             {mapCenter ? (
               <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
                 dragging zoomControl scrollWheelZoom={false}>
@@ -632,6 +645,22 @@ export default function PassengerDashboard() {
                 {passengerLocation && <Marker position={passengerLocation} />}
                 <RecenterMap position={passengerLocation} />
                 {showMapPicker && <MapClickHandler onPick={handleMapPick} />}
+                {walkRide && (
+                  <>
+                    <Polyline
+                      positions={[
+                        [walkRide.passengerActualLat, walkRide.passengerActualLng],
+                        [walkRide.pickupLat, walkRide.pickupLng],
+                      ]}
+                      pathOptions={{ color: "#ef4444", weight: 3, dashArray: "8 6" }}
+                    />
+                    <CircleMarker
+                      center={[walkRide.pickupLat, walkRide.pickupLng]}
+                      radius={9}
+                      pathOptions={{ color: "#ef4444", fillColor: "#ffffff", fillOpacity: 1, weight: 2.5 }}
+                    />
+                  </>
+                )}
               </MapContainer>
             ) : (
               <div className="h-full flex flex-col items-center justify-center bg-slate-100 text-gray-400 text-sm gap-2">
@@ -640,12 +669,27 @@ export default function PassengerDashboard() {
               </div>
             )}
           </div>
+
           {showMapPicker && (
             <p className="text-center text-xs text-gray-400 mt-1 mx-4">
               Tap anywhere on the map to set your pickup location
             </p>
           )}
 
+          {walkRide && (
+            <div className="mx-4 mt-2 bg-red-50 border border-red-100 rounded-2xl px-4 py-3 flex items-start gap-3">
+              <span className="text-xl">🚶</span>
+              <div>
+                <p className="text-sm font-semibold text-red-700">Walk to pickup point</p>
+                <p className="text-xs text-red-500 mt-0.5">
+                  Your location is <strong>{walkRide.distToRoute?.toFixed(2)} km</strong> from the nearest ride route.
+                  Head to the <strong>red circle</strong> on the map — that's where the rider will pick you up.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Riders list */}
           <div className="mx-4 mt-4 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 pt-4 pb-3">
               <div className="flex items-center justify-between mb-3">
@@ -675,6 +719,7 @@ export default function PassengerDashboard() {
                 )}
               </div>
             </div>
+
             <div className="px-4 pb-4 flex flex-col gap-3 max-h-[55vh] overflow-y-auto">
               {loadingRiders && [1, 2].map((i) => (
                 <div key={i} className="w-full h-36 rounded-2xl bg-gray-100 animate-pulse" />
@@ -794,16 +839,12 @@ export default function PassengerDashboard() {
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">New Email</label>
-                    <input type="email" value={editEmail}
-                      onChange={e => setEditEmail(e.target.value)}
+                    <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)}
                       placeholder="your@email.com"
-                      className="w-full bg-gray-100 p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
+                      className="w-full bg-gray-100 p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                   </div>
                   {editMsg && (
-                    <p className={`text-xs ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>
-                      {editMsg}
-                    </p>
+                    <p className={`text-xs ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>{editMsg}</p>
                   )}
                   <div className="flex gap-2">
                     <button onClick={() => { setEditMode(false); setEditMsg("") }}
@@ -828,7 +869,6 @@ export default function PassengerDashboard() {
               className="w-full py-3 rounded-2xl bg-teal-50 border border-teal-200 text-teal-700 font-semibold text-sm hover:bg-teal-100 transition">
               🛵 Become a Rider
             </button>
-
             <button onClick={handleLogout}
               className="w-full py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 font-semibold text-sm hover:bg-red-100 transition">
               🚪 Logout
