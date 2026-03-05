@@ -30,8 +30,12 @@ export function calculateFare(passengerLat, passengerLng) {
     throw new Error("Invalid passenger coordinates for fare calculation")
   const kmRaw = haversineKm(passengerLat, passengerLng, COLLEGE.lat, COLLEGE.lng)
   const km    = Number(kmRaw.toFixed(1))
-  const fare  = Math.max(20, Math.round(km * 5))
+  const fare  = Math.round(25 + (km * 5))
   return { km, fare }
+}
+
+export function calculateETA(distanceKm) {
+  return Math.round((distanceKm / 32) * 60)
 }
 
 export function isWithinPickupRadius(riderLat, riderLng, passengerLat, passengerLng) {

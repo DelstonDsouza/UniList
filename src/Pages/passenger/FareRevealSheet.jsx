@@ -1,6 +1,4 @@
 // src/pages/passenger/FareRevealSheet.jsx
-// CREATE this new file
-// Bottom-sheet modal that appears after ride lock — first and only time fare is shown
 
 import { useRide } from "../../context/RideContext"
 
@@ -40,6 +38,10 @@ function FareRevealSheet() {
             </span>
           </div>
           <div className="flex justify-between items-center">
+            <span className="text-sm text-slate-600 dark:text-slate-400">Base fare</span>
+            <span className="font-semibold text-slate-900 dark:text-white">₹25</span>
+          </div>
+          <div className="flex justify-between items-center">
             <span className="text-sm text-slate-600 dark:text-slate-400">Rate</span>
             <span className="font-semibold text-slate-900 dark:text-white">₹5 / km</span>
           </div>
@@ -52,7 +54,7 @@ function FareRevealSheet() {
               ₹{fareInfo.amount}
             </span>
           </div>
-          <p className="text-xs text-slate-400 text-center">Minimum fare ₹20 applies</p>
+          <p className="text-xs text-slate-400 text-center">Minimum fare ₹25 applies</p>
         </div>
 
         {/* Warning */}

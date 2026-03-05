@@ -189,7 +189,7 @@ export default function RiderWait() {
             {passengerJoined ? "✓ Passenger found!" : `Looking for passengers${dots}`}
           </p>
           <p className="text-xs text-white/70">
-            {passengerJoined ? "Taking you to confirmation…" : "📡 Broadcasting your location live"}
+            {passengerJoined ? "Taking you to confirmation…" : ""}
           </p>
         </div>
       </div>
@@ -225,11 +225,6 @@ export default function RiderWait() {
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Your trip</p>
             <p className="text-xs text-gray-400">Departure</p>
             <p className="font-semibold">{departureTime || "ASAP"}</p>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-gray-500 bg-blue-50 rounded-xl px-3 py-2">
-            <span className="text-blue-500">📍</span>
-            <span>Pickup pin set — passengers matched to this point</span>
           </div>
 
           <div className="pt-3 border-t border-gray-100">

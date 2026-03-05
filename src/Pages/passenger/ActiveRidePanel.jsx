@@ -13,16 +13,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-const COLLEGE         = [12.872109642876621, 74.84534749009204]
-const AVG_SPEED_KMH   = 40
-const PEAK_MULTIPLIER = 1.5
-const PEAK_START      = 8
-const PEAK_END        = 9
-
-function isPeakHour() {
-  const h = new Date().getHours()
-  return h >= PEAK_START && h < PEAK_END
-}
+const COLLEGE = [12.872109642876621, 74.84534749009204]
 
 function calcEta(fromLat, fromLng, toLat, toLng) {
   const R    = 6371
@@ -34,11 +25,9 @@ function calcEta(fromLat, fromLng, toLat, toLng) {
     Math.cos((toLat   * Math.PI) / 180) *
     Math.sin(dLng / 2) ** 2
   const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  const speed  = isPeakHour() ? AVG_SPEED_KMH / PEAK_MULTIPLIER : AVG_SPEED_KMH
-  return { distKm: Number(distKm.toFixed(1)), etaMin: Math.max(1, Math.round((distKm / speed) * 60)) }
+  return { distKm: Number(distKm.toFixed(1)), etaMin: Math.round((distKm / 32) * 60) }
 }
 
-// ── Map pin — matches RidePickup exactly ─────────────────────────────────────
 function PinLayer({ position, color, emoji, label }) {
   const map = useMap()
   useEffect(() => {
@@ -86,7 +75,6 @@ function FitRoute({ coords }) {
   return null
 }
 
-// ── Modals ────────────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
   return (
     <div style={{
@@ -165,12 +153,11 @@ function ReportModal({ onClose }) {
 
 function HelpModal({ onClose }) {
   const faqs = [
-    { q: "How do I pay?",               a: "Pay cash directly to the rider when you arrive. ₹5/km, minimum ₹20." },
-    { q: "Can I cancel my ride?",        a: "Rides cannot be cancelled once confirmed. Contact the rider directly if needed." },
+    { q: "How do I pay?",                     a: "Pay cash directly to the rider when you arrive. ₹5/km, minimum ₹25." },
+    { q: "Can I cancel my ride?",              a: "Rides cannot be cancelled once confirmed. Contact the rider directly if needed." },
     { q: "What if the rider doesn't show up?", a: "Wait 5 minutes then use the Report button to flag the issue." },
-    { q: "What is the OTP for?",         a: "The OTP verifies your identity. Share the 4-digit code when the rider arrives." },
-    { q: "Why does ETA increase during peak hours?", a: "Between 8–9 AM, a 1.5× traffic multiplier is applied for realistic estimates." },
-    { q: "What if I feel unsafe?",       a: "Exit the vehicle and call 112. Then report the issue using the Report button." },
+    { q: "What is the OTP for?",               a: "The OTP verifies your identity. Share the 4-digit code when the rider arrives." },
+    { q: "What if I feel unsafe?",             a: "Exit the vehicle and call 112. Then report the issue using the Report button." },
   ]
   return (
     <Modal title="❓ Help & FAQ" onClose={onClose}>
@@ -190,7 +177,6 @@ function HelpModal({ onClose }) {
 export default function ActiveRidePanel() {
   const { activeRide, fareInfo, viewState } = useRide()
 
-  // ✅ Passenger's saved pickup location from ride document (not GPS)
   const pickupLat    = activeRide?.passenger?.location?.coordinates?.[1]
   const pickupLng    = activeRide?.passenger?.location?.coordinates?.[0]
   const passengerPos = (pickupLat && pickupLng) ? [pickupLat, pickupLng] : null
@@ -204,15 +190,12 @@ export default function ActiveRidePanel() {
   const [showHelp,    setShowHelp]    = useState(false)
   const abortRef = useRef(null)
 
-  // ✅ "waiting" covers both locked + pickup_started — OTP and ETA always show
   const isWaiting = viewState === "waiting"
   const isOngoing = viewState === "ongoing"
-  const isPeak    = isPeakHour()
 
   const destPin    = isOngoing ? COLLEGE : passengerPos
   const routeColor = isOngoing ? "#16a34a" : "#2563EB"
 
-  // ── Socket: live rider location ───────────────────────────────────────────
   useEffect(() => {
     if (!activeRide?._id) return
     socket.emit("join:passenger", activeRide._id)
@@ -221,14 +204,12 @@ export default function ActiveRidePanel() {
     return () => socket.off("rider:location", handle)
   }, [activeRide?._id])
 
-  // ── Seed initial rider position from ride data ────────────────────────────
   useEffect(() => {
     const lat = activeRide?.currentLocation?.coordinates?.[1]
     const lng = activeRide?.currentLocation?.coordinates?.[0]
     if (lat && lng && !riderPos) setRiderPos([lat, lng])
   }, [activeRide]) // eslint-disable-line
 
-  // ── OSRM route polyline ───────────────────────────────────────────────────
   useEffect(() => {
     if (!riderPos) return
     const dest = isOngoing ? COLLEGE : passengerPos
@@ -251,11 +232,9 @@ export default function ActiveRidePanel() {
     return () => ctrl.abort()
   }, [riderPos?.[0], riderPos?.[1], isOngoing, passengerPos?.[0], passengerPos?.[1]]) // eslint-disable-line
 
-  // ── ETA calculation ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!riderPos) return
     if (isWaiting && passengerPos) {
-      // ✅ ETA from rider → passenger's saved pickup (not GPS)
       const { etaMin } = calcEta(riderPos[0], riderPos[1], passengerPos[0], passengerPos[1])
       setEtaToMe(etaMin)
       setEtaToDest(null)
@@ -282,29 +261,22 @@ export default function ActiveRidePanel() {
 
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
 
-        {/* ── MAP ─────────────────────────────────────────────────────── */}
         <div style={{ height: "48vh", width: "100%", flexShrink: 0, position: "relative" }}>
           <MapContainer center={mapCenter} zoom={14}
             style={{ height: "100%", width: "100%" }} zoomControl={false}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
-
             {routeCoords.length > 1 && (
               <Polyline positions={routeCoords}
                 pathOptions={{ color: routeColor, weight: 5, opacity: 0.88 }} />
             )}
             {routeCoords.length > 1 && <FitRoute coords={routeCoords} />}
-
-            {/* Rider pin */}
             {riderPos && (
               <>
-                <PinLayer position={riderPos} color="#2563EB" emoji="🏍"
-                  label={activeRide.riderName || "Rider"} />
+                <PinLayer position={riderPos} color="#2563EB" emoji="🏍" label={activeRide.riderName || "Rider"} />
                 <AccuracyRing position={riderPos} />
               </>
             )}
-
-            {/* Destination: Your Pickup (waiting) or College (ongoing) */}
             {destPin && (
               <PinLayer
                 position={destPin}
@@ -315,7 +287,6 @@ export default function ActiveRidePanel() {
             )}
           </MapContainer>
 
-          {/* Status badge top-left */}
           <div style={{
             position: "absolute", top: 14, left: 14, zIndex: 500,
             background: isOngoing ? "#16a34a" : "#2563EB",
@@ -326,7 +297,6 @@ export default function ActiveRidePanel() {
             {isOngoing ? "🎓 RIDE IN PROGRESS" : "🛵 RIDER IS COMING"}
           </div>
 
-          {/* Help + Report top-right */}
           <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
             <button onClick={() => setShowHelp(true)} style={{
               padding: "7px 12px", borderRadius: 20, border: "none",
@@ -341,7 +311,6 @@ export default function ActiveRidePanel() {
           </div>
         </div>
 
-        {/* ── BOTTOM SHEET ────────────────────────────────────────────── */}
         <div style={{
           flex: 1, background: "white", borderRadius: "24px 24px 0 0",
           marginTop: -20, zIndex: 10, position: "relative",
@@ -349,10 +318,8 @@ export default function ActiveRidePanel() {
           boxShadow: "0 -6px 30px rgba(0,0,0,0.10)",
           display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
         }}>
-          {/* Drag handle */}
           <div style={{ width: 40, height: 4, background: "#e2e8f0", borderRadius: 99, margin: "0 auto 4px" }} />
 
-          {/* Title row */}
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
               color: isOngoing ? "#16a34a" : "#2563EB" }}>
@@ -363,7 +330,6 @@ export default function ActiveRidePanel() {
             </h2>
           </div>
 
-          {/* BIG ETA — matches RidePickup exactly */}
           <div style={{
             background: isOngoing ? "#0f172a" : "#1e40af",
             borderRadius: 18, padding: "16px 18px",
@@ -378,11 +344,6 @@ export default function ActiveRidePanel() {
                   {etaDisplay != null ? "min" : ""}
                 </span>
               </p>
-              {isPeak && (
-                <p style={{ fontSize: 10, color: "#fbbf24", marginTop: 3, fontWeight: 600 }}>
-                  ⚠ Peak hour — 1.5× traffic
-                </p>
-              )}
             </div>
             <div style={{ textAlign: "right" }}>
               {isOngoing && distToDest != null && (
@@ -396,7 +357,6 @@ export default function ActiveRidePanel() {
             </div>
           </div>
 
-          {/* Rider info card — matches RidePickup passenger card style */}
           <div style={{ background: "#F0F9FF", border: "1.5px solid #BFDBFE", borderRadius: 16, padding: "12px 14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -425,7 +385,6 @@ export default function ActiveRidePanel() {
             </div>
           </div>
 
-          {/* ✅ OTP card — shows for isWaiting (covers locked + pickup_started) */}
           {isWaiting && otp && (
             <div style={{
               background: "#f0fdf4", border: "2px solid #86efac",
@@ -461,7 +420,6 @@ export default function ActiveRidePanel() {
             </div>
           )}
 
-          {/* Report + Help */}
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setShowReport(true)} style={{
               flex: 1, padding: "11px 0", borderRadius: 12,
@@ -477,7 +435,6 @@ export default function ActiveRidePanel() {
 
           <p style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", margin: 0 }}>
             Live tracking via socket · Ride cannot be cancelled
-            {isPeak ? " · Peak hour delays apply" : ""}
           </p>
         </div>
       </div>

@@ -254,6 +254,28 @@ function BeARiderModal({ onClose, onSubmit, loading }) {
   )
 }
 
+function calcPickupTime(departureTimeStr, etaMinutes) {
+  if (!departureTimeStr) return null
+  const str   = departureTimeStr.trim()
+  const ampm  = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  const h24   = str.match(/^(\d{1,2}):(\d{2})$/)
+  let hours, minutes
+  if (ampm) {
+    hours = parseInt(ampm[1]); minutes = parseInt(ampm[2])
+    const p = ampm[3].toUpperCase()
+    if (p === "PM" && hours !== 12) hours += 12
+    if (p === "AM" && hours === 12) hours = 0
+  } else if (h24) {
+    hours = parseInt(h24[1]); minutes = parseInt(h24[2])
+  } else return null
+  const total = hours * 60 + minutes + etaMinutes
+  const h = Math.floor(total / 60) % 24
+  const m = total % 60
+  const period = h >= 12 ? "PM" : "AM"
+  const dh = h % 12 === 0 ? 12 : h % 12
+  return `${dh}:${String(m).padStart(2, "0")} ${period}`
+}
+
 function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerProfile }) {
   const [confirming, setConfirming] = useState(false)
 
@@ -262,7 +284,8 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
   const dist = passengerLocation && riderLat && riderLng
     ? distKm(passengerLocation[0], passengerLocation[1], riderLat, riderLng)
     : null
-
+  const etaMinutes = dist !== null ? Math.round((dist / 32) * 60) : null
+  const pickupTime = etaMinutes !== null ? calcPickupTime(ride.departureTime, etaMinutes) : null
   const pickupArea = ride.locationName || ride.pickupArea || "—"
   const rating = ride.ratingCount > 0
     ? (ride.ratingSum / ride.ratingCount).toFixed(1)
@@ -278,26 +301,18 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
 
   return (
     <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-lg">
-            {(ride.riderName || "R")[0].toUpperCase()}
-          </div>
-          <div>
-            <p className="font-bold text-gray-900 text-base">{ride.riderName || "—"}</p>
-            <Stars rating={rating} />
-          </div>
-        </div>
-        {dist !== null && (
-          <span className="text-sm font-semibold px-3 py-1.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 whitespace-nowrap">
-            {dist.toFixed(1)} km away
-          </span>
-        )}
-      </div>
 
-      <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2">
-        <span>📍</span>
-        <span className="font-medium">{pickupArea}</span>
+      <div className="flex items-start gap-3">
+        <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-lg flex-shrink-0">
+          {(ride.riderName || "R")[0].toUpperCase()}
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <p className="font-bold text-gray-900 text-lg">{ride.riderName || "—"}</p>
+          <Stars rating={rating} />
+          <p className="text-sm font-semibold text-gray-900 mt-1">📍 {pickupArea}</p>
+{dist !== null && <p className="text-sm font-semibold text-gray-900">{dist.toFixed(1)} km away</p>}
+{pickupTime && <p className="text-sm font-semibold text-gray-900">🕐 Pickup {pickupTime}</p>}
+        </div>
       </div>
 
       {ride.needsToWalkToRoute && (
@@ -310,13 +325,6 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
               Walk to the red marker shown on the map for pickup.
             </p>
           </div>
-        </div>
-      )}
-
-      {!ride.needsToWalkToRoute && ride.distToRoute != null && (
-        <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl px-3 py-2">
-          <span className="text-green-500 text-sm">✓</span>
-          <p className="text-xs text-green-600 font-medium">You are on this route — direct pickup</p>
         </div>
       )}
 
@@ -694,8 +702,7 @@ export default function PassengerDashboard() {
             <div className="px-4 pt-4 pb-3">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h2 className="font-bold text-gray-900 text-base">Available Riders</h2>
-                  <p className="text-sm text-gray-400">on your route to college</p>
+                  <h1 className="font-bold text-2xl text-gray-900 text-base">Available Riders</h1>
                 </div>
                 {!loadingRiders && (
                   <span className="text-sm font-semibold px-3 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
