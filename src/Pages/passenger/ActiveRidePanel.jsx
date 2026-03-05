@@ -38,7 +38,7 @@ function calcEta(fromLat, fromLng, toLat, toLng) {
   return { distKm: Number(distKm.toFixed(1)), etaMin: Math.max(1, Math.round((distKm / speed) * 60)) }
 }
 
-// ── Map pin component (matches RidePickup style) ──────────────────────────────
+// ── Map pin — matches RidePickup exactly ─────────────────────────────────────
 function PinLayer({ position, color, emoji, label }) {
   const map = useMap()
   useEffect(() => {
@@ -86,7 +86,7 @@ function FitRoute({ coords }) {
   return null
 }
 
-// ── Modal shell ───────────────────────────────────────────────────────────────
+// ── Modals ────────────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
   return (
     <div style={{
@@ -109,14 +109,11 @@ function Modal({ title, onClose, children }) {
   )
 }
 
-function ReportModal({ onClose, rideId }) {
+function ReportModal({ onClose }) {
   const reasons = [
-    "Rider was rude or unprofessional",
-    "Rider took wrong route",
-    "Ride did not happen",
-    "Felt unsafe during ride",
-    "Rider was not at pickup on time",
-    "Other issue",
+    "Rider was rude or unprofessional", "Rider took wrong route",
+    "Ride did not happen", "Felt unsafe during ride",
+    "Rider was not at pickup on time", "Other issue",
   ]
   const [selected, setSelected] = useState("")
   const [details,  setDetails]  = useState("")
@@ -159,10 +156,8 @@ function ReportModal({ onClose, rideId }) {
       />
       <button onClick={() => selected && setSent(true)} disabled={!selected} style={{
         marginTop: 14, width: "100%", padding: "14px 0", borderRadius: 14,
-        background: selected ? "#dc2626" : "#e2e8f0",
-        color: selected ? "white" : "#94a3b8",
-        fontWeight: 700, fontSize: 15, border: "none",
-        cursor: selected ? "pointer" : "not-allowed",
+        background: selected ? "#dc2626" : "#e2e8f0", color: selected ? "white" : "#94a3b8",
+        fontWeight: 700, fontSize: 15, border: "none", cursor: selected ? "pointer" : "not-allowed",
       }}>Submit Report</button>
     </Modal>
   )
@@ -170,12 +165,12 @@ function ReportModal({ onClose, rideId }) {
 
 function HelpModal({ onClose }) {
   const faqs = [
-    { q: "How do I pay?", a: "Pay cash directly to the rider when you arrive at the destination. ₹5/km, minimum ₹20." },
-    { q: "Can I cancel my ride?", a: "Rides cannot be cancelled once confirmed. Contact the rider directly if there's an emergency." },
-    { q: "What if the rider doesn't show up?", a: "Wait 5 minutes. If the rider is more than 10 minutes late, use the Report button to flag the issue." },
-    { q: "What is the OTP for?", a: "The OTP verifies your identity when the rider arrives. Share the 4-digit code shown on your screen." },
-    { q: "Why does ETA increase during peak hours?", a: "Between 8–9 AM, traffic multiplier of 1.5x is applied to give a more realistic arrival estimate." },
-    { q: "What if I feel unsafe?", a: "Exit the vehicle if possible and call emergency services (112). Then report the issue using the Report button." },
+    { q: "How do I pay?",               a: "Pay cash directly to the rider when you arrive. ₹5/km, minimum ₹20." },
+    { q: "Can I cancel my ride?",        a: "Rides cannot be cancelled once confirmed. Contact the rider directly if needed." },
+    { q: "What if the rider doesn't show up?", a: "Wait 5 minutes then use the Report button to flag the issue." },
+    { q: "What is the OTP for?",         a: "The OTP verifies your identity. Share the 4-digit code when the rider arrives." },
+    { q: "Why does ETA increase during peak hours?", a: "Between 8–9 AM, a 1.5× traffic multiplier is applied for realistic estimates." },
+    { q: "What if I feel unsafe?",       a: "Exit the vehicle and call 112. Then report the issue using the Report button." },
   ]
   return (
     <Modal title="❓ Help & FAQ" onClose={onClose}>
@@ -191,14 +186,14 @@ function HelpModal({ onClose }) {
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function ActiveRidePanel() {
   const { activeRide, fareInfo, viewState } = useRide()
 
-  // ✅ Use passenger's saved pickup location from ride document
+  // ✅ Passenger's saved pickup location from ride document (not GPS)
   const pickupLat    = activeRide?.passenger?.location?.coordinates?.[1]
   const pickupLng    = activeRide?.passenger?.location?.coordinates?.[0]
-  const passengerPos = pickupLat && pickupLng ? [pickupLat, pickupLng] : null
+  const passengerPos = (pickupLat && pickupLng) ? [pickupLat, pickupLng] : null
 
   const [riderPos,    setRiderPos]    = useState(null)
   const [routeCoords, setRouteCoords] = useState([])
@@ -209,14 +204,15 @@ export default function ActiveRidePanel() {
   const [showHelp,    setShowHelp]    = useState(false)
   const abortRef = useRef(null)
 
-  const isOngoing = viewState === "ongoing"
+  // ✅ "waiting" covers both locked + pickup_started — OTP and ETA always show
   const isWaiting = viewState === "waiting"
+  const isOngoing = viewState === "ongoing"
   const isPeak    = isPeakHour()
 
-  const routeColor = isOngoing ? "#16a34a" : "#2563EB"
   const destPin    = isOngoing ? COLLEGE : passengerPos
+  const routeColor = isOngoing ? "#16a34a" : "#2563EB"
 
-  // ── Socket: receive live rider location ───────────────────────────────────
+  // ── Socket: live rider location ───────────────────────────────────────────
   useEffect(() => {
     if (!activeRide?._id) return
     socket.emit("join:passenger", activeRide._id)
@@ -225,43 +221,41 @@ export default function ActiveRidePanel() {
     return () => socket.off("rider:location", handle)
   }, [activeRide?._id])
 
-  // ── Seed initial rider position ───────────────────────────────────────────
+  // ── Seed initial rider position from ride data ────────────────────────────
   useEffect(() => {
     const lat = activeRide?.currentLocation?.coordinates?.[1]
     const lng = activeRide?.currentLocation?.coordinates?.[0]
     if (lat && lng && !riderPos) setRiderPos([lat, lng])
-  }, [activeRide])
+  }, [activeRide]) // eslint-disable-line
 
-  // ── OSRM route ────────────────────────────────────────────────────────────
+  // ── OSRM route polyline ───────────────────────────────────────────────────
   useEffect(() => {
     if (!riderPos) return
     const dest = isOngoing ? COLLEGE : passengerPos
     if (!dest) return
-
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
-
-    const url = `https://router.project-osrm.org/route/v1/driving/` +
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/` +
       `${riderPos[1]},${riderPos[0]};${dest[1]},${dest[0]}` +
-      `?overview=full&geometries=geojson`
-
-    fetch(url, { signal: ctrl.signal })
+      `?overview=full&geometries=geojson`,
+      { signal: ctrl.signal }
+    )
       .then(r => r.json())
       .then(data => {
         const route = data?.routes?.[0]
-        if (!route) return
-        setRouteCoords(route.geometry.coordinates.map(([lng, lat]) => [lat, lng]))
+        if (route) setRouteCoords(route.geometry.coordinates.map(([lng, lat]) => [lat, lng]))
       })
       .catch(e => { if (e.name !== "AbortError") console.warn("OSRM:", e) })
-
     return () => ctrl.abort()
-  }, [riderPos?.[0], riderPos?.[1], isOngoing, passengerPos?.[0], passengerPos?.[1]])
+  }, [riderPos?.[0], riderPos?.[1], isOngoing, passengerPos?.[0], passengerPos?.[1]]) // eslint-disable-line
 
-  // ── ETA ───────────────────────────────────────────────────────────────────
+  // ── ETA calculation ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!riderPos) return
     if (isWaiting && passengerPos) {
+      // ✅ ETA from rider → passenger's saved pickup (not GPS)
       const { etaMin } = calcEta(riderPos[0], riderPos[1], passengerPos[0], passengerPos[1])
       setEtaToMe(etaMin)
       setEtaToDest(null)
@@ -271,26 +265,24 @@ export default function ActiveRidePanel() {
       setDistToDest(distKm)
       setEtaToMe(null)
     }
-  }, [riderPos, passengerPos, isWaiting, isOngoing])
-useEffect(() => {
-  console.log("🔍 activeRide:", JSON.stringify(activeRide, null, 2))
-}, [activeRide])
+  }, [riderPos, passengerPos, isWaiting, isOngoing]) // eslint-disable-line
+
   if (!activeRide) return null
 
   const mapCenter  = riderPos || passengerPos || COLLEGE
   const otp        = activeRide.otp || null
+  const fare       = fareInfo?.amount ?? activeRide?.fare?.amount ?? "—"
   const etaDisplay = isOngoing ? etaToDest : etaToMe
   const etaLabel   = isOngoing ? "ETA TO COLLEGE" : "RIDER ARRIVES IN"
-  const fare       = fareInfo?.amount ?? activeRide?.fare?.amount ?? "—"
 
   return (
     <>
-      {showReport && <ReportModal onClose={() => setShowReport(false)} rideId={activeRide._id} />}
+      {showReport && <ReportModal onClose={() => setShowReport(false)} />}
       {showHelp   && <HelpModal  onClose={() => setShowHelp(false)} />}
 
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
 
-        {/* ── MAP ───────────────────────────────────────────────────────── */}
+        {/* ── MAP ─────────────────────────────────────────────────────── */}
         <div style={{ height: "48vh", width: "100%", flexShrink: 0, position: "relative" }}>
           <MapContainer center={mapCenter} zoom={14}
             style={{ height: "100%", width: "100%" }} zoomControl={false}>
@@ -306,12 +298,13 @@ useEffect(() => {
             {/* Rider pin */}
             {riderPos && (
               <>
-                <PinLayer position={riderPos} color="#2563EB" emoji="🏍" label={activeRide.riderName || "Rider"} />
+                <PinLayer position={riderPos} color="#2563EB" emoji="🏍"
+                  label={activeRide.riderName || "Rider"} />
                 <AccuracyRing position={riderPos} />
               </>
             )}
 
-            {/* Destination pin — passenger pickup (waiting) or college (ongoing) */}
+            {/* Destination: Your Pickup (waiting) or College (ongoing) */}
             {destPin && (
               <PinLayer
                 position={destPin}
@@ -322,7 +315,7 @@ useEffect(() => {
             )}
           </MapContainer>
 
-          {/* Status badge */}
+          {/* Status badge top-left */}
           <div style={{
             position: "absolute", top: 14, left: 14, zIndex: 500,
             background: isOngoing ? "#16a34a" : "#2563EB",
@@ -330,10 +323,10 @@ useEffect(() => {
             fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
             boxShadow: "0 2px 12px rgba(0,0,0,0.20)",
           }}>
-            {isOngoing ? "🎓 RIDE IN PROGRESS" : "Ride Active"}
+            {isOngoing ? "🎓 RIDE IN PROGRESS" : "🛵 RIDER IS COMING"}
           </div>
 
-          {/* Help + Report overlay */}
+          {/* Help + Report top-right */}
           <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
             <button onClick={() => setShowHelp(true)} style={{
               padding: "7px 12px", borderRadius: 20, border: "none",
@@ -348,7 +341,7 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* ── BOTTOM SHEET ──────────────────────────────────────────────── */}
+        {/* ── BOTTOM SHEET ────────────────────────────────────────────── */}
         <div style={{
           flex: 1, background: "white", borderRadius: "24px 24px 0 0",
           marginTop: -20, zIndex: 10, position: "relative",
@@ -356,20 +349,21 @@ useEffect(() => {
           boxShadow: "0 -6px 30px rgba(0,0,0,0.10)",
           display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
         }}>
+          {/* Drag handle */}
           <div style={{ width: 40, height: 4, background: "#e2e8f0", borderRadius: 99, margin: "0 auto 4px" }} />
 
-          {/* Title */}
+          {/* Title row */}
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
               color: isOngoing ? "#16a34a" : "#2563EB" }}>
-              {isOngoing ? "RIDE IN PROGRESS" : "RIDER IS ON THE WAY"}
+              {isOngoing ? "RIDE IN PROGRESS" : "Pickup Passenger"}
             </p>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>
-              {isOngoing ? "On the way to college" : "Active Ride"}
+              {isOngoing ? "Heading to College" : "Rider is on the way"}
             </h2>
           </div>
 
-          {/* BIG ETA */}
+          {/* BIG ETA — matches RidePickup exactly */}
           <div style={{
             background: isOngoing ? "#0f172a" : "#1e40af",
             borderRadius: 18, padding: "16px 18px",
@@ -402,7 +396,7 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Rider card */}
+          {/* Rider info card — matches RidePickup passenger card style */}
           <div style={{ background: "#F0F9FF", border: "1.5px solid #BFDBFE", borderRadius: 16, padding: "12px 14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -431,7 +425,7 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* OTP card — waiting phase only */}
+          {/* ✅ OTP card — shows for isWaiting (covers locked + pickup_started) */}
           {isWaiting && otp && (
             <div style={{
               background: "#f0fdf4", border: "2px solid #86efac",
@@ -451,26 +445,23 @@ useEffect(() => {
                   </p>
                 </div>
               </div>
-
               <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
                 {otp.split("").map((digit, i) => (
                   <div key={i} style={{
                     width: 60, height: 68, borderRadius: 14,
                     background: "#0f172a", color: "white",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 32, fontWeight: 900,
-                    boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
+                    fontSize: 32, fontWeight: 900, boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
                   }}>{digit}</div>
                 ))}
               </div>
-
               <p style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", marginTop: 10 }}>
                 Do not share with anyone else
               </p>
             </div>
           )}
 
-          {/* Report + Help buttons */}
+          {/* Report + Help */}
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setShowReport(true)} style={{
               flex: 1, padding: "11px 0", borderRadius: 12,

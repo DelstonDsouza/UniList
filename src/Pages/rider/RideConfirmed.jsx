@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Polyline, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useLocation, useNavigate } from "react-router-dom"
+import { apiFetch } from "../../services/api"
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -13,7 +14,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-// ── Reverse geocode using Nominatim ──────────────────────────────────────────
 async function reverseGeocode(lat, lng) {
   try {
     const res  = await fetch(
@@ -27,13 +27,14 @@ async function reverseGeocode(lat, lng) {
       a.neighbourhood || a.suburb || a.village || "",
       a.city || a.town || a.county || "",
     ].filter(Boolean)
-    return parts.length > 0 ? parts.join(", ") : data.display_name?.split(",").slice(0, 3).join(",").trim()
+    return parts.length > 0
+      ? parts.join(", ")
+      : data.display_name?.split(",").slice(0, 3).join(",").trim()
   } catch {
     return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
   }
 }
 
-// ── Custom pin marker ─────────────────────────────────────────────────────────
 function PinMarker({ position, color, emoji, label }) {
   const map = useMap()
   useEffect(() => {
@@ -47,14 +48,12 @@ function PinMarker({ position, color, emoji, label }) {
       iconSize: [38, 38], iconAnchor: [19, 38],
     })
     const m = L.marker(position, { icon }).addTo(map)
-    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -40],
-      className: "bg-white text-xs font-semibold px-2 py-1 rounded-lg shadow border-0" })
+    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -40] })
     return () => { try { m.remove() } catch {} }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
 
-// ── OSRM road route polyline ──────────────────────────────────────────────────
 function RoutePolyline({ waypoints }) {
   const map      = useMap()
   const [coords, setCoords] = useState([])
@@ -66,7 +65,6 @@ function RoutePolyline({ waypoints }) {
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
-
     const stops = pts.map(([lat, lng]) => `${lng},${lat}`).join(";")
     fetch(
       `https://router.project-osrm.org/route/v1/driving/${stops}?overview=full&geometries=geojson`,
@@ -74,16 +72,13 @@ function RoutePolyline({ waypoints }) {
     )
       .then(r => r.json())
       .then(data => {
-        const route = data?.routes?.[0]
-        if (!route) return
-        const decoded = (route.geometry.coordinates || []).map(([lng, lat]) => [lat, lng])
+        const decoded = (data?.routes?.[0]?.geometry?.coordinates || []).map(([lng, lat]) => [lat, lng])
         setCoords(decoded)
         if (decoded.length > 1) {
           try { map.fitBounds(L.latLngBounds(decoded), { padding: [52, 52], animate: true }) } catch {}
         }
       })
       .catch(e => { if (e.name !== "AbortError") console.warn("Route error:", e) })
-
     return () => ctrl.abort()
   }, [waypoints.map(w => w?.join()).join("|"), map]) // eslint-disable-line
 
@@ -91,10 +86,8 @@ function RoutePolyline({ waypoints }) {
   return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.9 }} />
 }
 
-// ── St Aloysius fixed destination ─────────────────────────────────────────────
 const COLLEGE = [12.8698, 74.8425]
 
-// ── Main component ────────────────────────────────────────────────────────────
 export default function RideConfirmed() {
   const location = useLocation()
   const navigate  = useNavigate()
@@ -113,38 +106,27 @@ export default function RideConfirmed() {
     distanceKm     = 0,
   } = location.state || {}
 
-  // Use St Aloysius as destination if collegeLocation not passed
-  const destination = collegeLocation || COLLEGE
+  const destination     = collegeLocation || COLLEGE
+  const passengerPickup = passengerLat && passengerLng
+    ? [Number(passengerLat), Number(passengerLng)] : null
 
-  const passengerPickup = passengerLat && passengerLng ? [Number(passengerLat), Number(passengerLng)] : null
-
-  // Readable addresses
   const [riderAddress,     setRiderAddress]     = useState("Getting location…")
   const [passengerAddress, setPassengerAddress] = useState("Getting location…")
+  const [loading,          setLoading]          = useState(false)
+  const [error,            setError]            = useState("")
 
   useEffect(() => {
-    if (userLocation?.[0] && userLocation?.[1]) {
+    if (userLocation?.[0] && userLocation?.[1])
       reverseGeocode(userLocation[0], userLocation[1]).then(setRiderAddress)
-    }
   }, [userLocation?.[0], userLocation?.[1]]) // eslint-disable-line
 
   useEffect(() => {
-    if (passengerLat && passengerLng) {
+    if (passengerLat && passengerLng)
       reverseGeocode(Number(passengerLat), Number(passengerLng)).then(setPassengerAddress)
-    } else {
+    else
       setPassengerAddress("Location not available")
-    }
   }, [passengerLat, passengerLng])
 
-  // Debug log
-  useEffect(() => {
-    console.log("RideConfirmed state:", {
-      passengerLat, passengerLng, passengerPickup,
-      userLocation, fare, distanceKm
-    })
-  }, [])
-
-  // Departure time lock
   const [canDepart,   setCanDepart]   = useState(!departureTimeRaw)
   const [departLabel, setDepartLabel] = useState(departureTime || "Now")
 
@@ -152,8 +134,7 @@ export default function RideConfirmed() {
     if (!departureTimeRaw) { setCanDepart(true); return }
     const check = () => {
       const [h, m] = departureTimeRaw.split(":").map(Number)
-      const target = new Date()
-      target.setHours(h, m, 0, 0)
+      const target = new Date(); target.setHours(h, m, 0, 0)
       if (new Date() >= target) { setCanDepart(true); setDepartLabel("Now") }
       else { setCanDepart(false); setDepartLabel(departureTime || departureTimeRaw) }
     }
@@ -162,7 +143,6 @@ export default function RideConfirmed() {
     return () => clearInterval(t)
   }, [departureTimeRaw, departureTime])
 
-  // Waypoints: rider → passenger → college
   const waypoints = useMemo(
     () => [userLocation, passengerPickup, destination].filter(Boolean),
     [userLocation, passengerPickup, destination]
@@ -170,73 +150,64 @@ export default function RideConfirmed() {
 
   const center = userLocation ?? passengerPickup ?? destination
 
-  const handleStartRide = useCallback(() => {
-    navigate("/ride-pickup", {
-      state: {
-        rideId,
-        userLocation,
-        collegeLocation: destination,
-        passengerPickup,
-        passengerName,
-        passengerPhone,
-        fare,
-        distanceKm,
-        departureTime,
-      },
-    })
-  }, [navigate, rideId, userLocation, destination, passengerPickup,
+  // ── Rider clicks "Go Pick Up Passenger" ──────────────────────────────────
+  // Calls /pickup-start → status becomes "pickup_started"
+  // Passenger receives socket event → switches from UpcomingRide to ActiveRidePanel
+  const handleGoPickUp = useCallback(async () => {
+    if (!rideId) return
+    setLoading(true)
+    setError("")
+    try {
+      await apiFetch(`/rides/${rideId}/pickup-start`, { method: "POST" })
+      navigate("/ride-pickup", {
+        state: {
+          rideId,
+          userLocation,
+          collegeLocation: destination,
+          passengerPickup,
+          passengerName,
+          passengerPhone,
+          fare,
+          distanceKm,
+          departureTime,
+        },
+      })
+    } catch (err) {
+      setError(err.message || "Failed to start pickup. Try again.")
+      setLoading(false)
+    }
+  }, [rideId, navigate, userLocation, destination, passengerPickup,
       passengerName, passengerPhone, fare, distanceKm, departureTime])
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-
-      {/* MAP */}
       <div style={{ height: "52vh", width: "100%", flexShrink: 0 }}>
         <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
-          />
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
           <RoutePolyline waypoints={waypoints} />
-
-          {/* 🏍 Rider */}
-          {userLocation && (
-            <PinMarker position={userLocation} color="#2563EB" emoji="🏍" label="You" />
-          )}
-
-          {/* 👤 Passenger pickup */}
-          {passengerPickup && (
-            <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />
-          )}
-
-          {/* 🎓 College destination */}
+          {userLocation    && <PinMarker position={userLocation}    color="#2563EB" emoji="🏍" label="You" />}
+          {passengerPickup && <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />}
           <PinMarker position={destination} color="#DC2626" emoji="🎓" label="St Aloysius" />
         </MapContainer>
       </div>
 
-      {/* BOTTOM SHEET */}
-      <div
-        className="flex-1 bg-white px-5 pt-5 pb-8 flex flex-col gap-4"
+      <div className="flex-1 bg-white px-5 pt-5 pb-8 flex flex-col gap-4"
         style={{ borderRadius: "24px 24px 0 0", marginTop: -20,
-          boxShadow: "0 -4px 24px rgba(0,0,0,0.08)", position: "relative", zIndex: 10 }}
-      >
-        {/* Handle */}
+          boxShadow: "0 -4px 24px rgba(0,0,0,0.08)", position: "relative", zIndex: 10 }}>
+
         <div className="flex justify-center -mt-1 mb-1">
           <div className="w-10 h-1 rounded-full bg-gray-200" />
         </div>
 
-        {/* Title */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-green-600 uppercase tracking-widest mb-0.5">
-              Passenger Found
-            </p>
+            <p className="text-xs font-semibold text-green-600 uppercase tracking-widest mb-0.5">Passenger Found</p>
             <h2 className="text-xl font-bold text-gray-900">Ride Confirmed</h2>
           </div>
           <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-lg">✓</div>
         </div>
 
-        {/* Route summary */}
         <div className="rounded-2xl p-4 bg-gray-50 border border-gray-100 space-y-3">
           <div className="flex gap-3 items-start">
             <div className="flex flex-col items-center gap-1 pt-1">
@@ -255,8 +226,7 @@ export default function RideConfirmed() {
                 <p className="text-xs text-gray-400 font-medium">Pickup — {passengerName}</p>
                 <p className="text-sm font-semibold text-gray-800 leading-snug">{passengerAddress}</p>
                 {passengerPhone && (
-                  <a href={`tel:${passengerPhone}`}
-                    className="text-xs text-blue-600 font-medium mt-0.5 inline-block">
+                  <a href={`tel:${passengerPhone}`} className="text-xs text-blue-600 font-medium mt-0.5 inline-block">
                     📞 {passengerPhone}
                   </a>
                 )}
@@ -269,25 +239,22 @@ export default function RideConfirmed() {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl p-3 text-center" style={{ background: "#F8FAFF", border: "1.5px solid #E0EAFF" }}>
+          <div className="rounded-xl p-3 text-center bg-blue-50 border border-blue-100">
             <p className="text-xs text-gray-400 mb-0.5">Distance</p>
             <p className="text-base font-bold text-gray-800">{Number(distanceKm).toFixed(1)} km</p>
           </div>
-          <div className="rounded-xl p-3 text-center" style={{ background: "#F0FDF4", border: "1.5px solid #BBF7D0" }}>
+          <div className="rounded-xl p-3 text-center bg-green-50 border border-green-100">
             <p className="text-xs text-gray-400 mb-0.5">You Earn</p>
             <p className="text-base font-bold text-green-600">₹{fare}</p>
           </div>
-          <div className="rounded-xl p-3 text-center" style={{ background: "#FFF7ED", border: "1.5px solid #FED7AA" }}>
+          <div className="rounded-xl p-3 text-center bg-orange-50 border border-orange-100">
             <p className="text-xs text-gray-400 mb-0.5">Departs</p>
             <p className="text-sm font-bold text-orange-600">{departLabel}</p>
           </div>
         </div>
 
-        {/* OTP reminder */}
-        <div className="rounded-xl p-3 flex items-start gap-3"
-          style={{ background: "#FFFBEB", border: "1.5px solid #FDE68A" }}>
+        <div className="rounded-xl p-3 flex items-start gap-3 bg-amber-50 border border-amber-200">
           <span className="text-xl mt-0.5">🔐</span>
           <div>
             <p className="text-sm font-semibold text-amber-800">OTP Required at Pickup</p>
@@ -295,16 +262,17 @@ export default function RideConfirmed() {
           </div>
         </div>
 
-        {/* CTA */}
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+
         <button
-          onClick={handleStartRide}
-          disabled={!canDepart}
+          onClick={handleGoPickUp}
+          disabled={!canDepart || loading}
           className={`w-full py-4 rounded-2xl font-bold text-white text-base transition
-            ${canDepart
+            ${canDepart && !loading
               ? "bg-green-600 hover:bg-green-700 active:scale-95"
               : "bg-gray-300 cursor-not-allowed text-gray-500"}`}
         >
-          {canDepart ? "Go Pick Up Passenger →" : `Wait until ${departLabel}`}
+          {loading ? "Starting…" : canDepart ? "Go Pick Up Passenger →" : `Wait until ${departLabel}`}
         </button>
       </div>
     </div>

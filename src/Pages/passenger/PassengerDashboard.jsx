@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import toast from "react-hot-toast"
 import L from "leaflet"
@@ -11,7 +11,8 @@ import { useRide } from "../../context/RideContext"
 import { apiFetch } from "../../services/api"
 import FareRevealSheet from "./FareRevealSheet"
 import ActiveRidePanel from "./ActiveRidePanel"
-import RideComplete from "./RideComplete"
+import UpcomingRide    from "./UpcomingRide"
+import RideComplete    from "./RideComplete"
 
 import homeIcon    from "../../assets/icons/home-icon.svg"
 import exploreIcon from "../../assets/icons/explore-icon.svg"
@@ -24,11 +25,9 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const NOMINATIM   = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
 
-// ── Geo helpers ───────────────────────────────────────────────────────────────
 function distKm(lat1, lng1, lat2, lng2) {
   const R    = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -81,7 +80,6 @@ const searchPlaces = async (query) => {
   }
 }
 
-// ── Map helpers ───────────────────────────────────────────────────────────────
 function RecenterMap({ position }) {
   const map  = useMap()
   const prev = useRef(null)
@@ -99,7 +97,6 @@ function MapClickHandler({ onPick }) {
   return null
 }
 
-// ── Stars ─────────────────────────────────────────────────────────────────────
 function Stars({ rating = 0 }) {
   const val = parseFloat(rating) || 0
   return (
@@ -115,7 +112,6 @@ function Stars({ rating = 0 }) {
   )
 }
 
-// ── Rider Card ────────────────────────────────────────────────────────────────
 function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerProfile }) {
   const [confirming, setConfirming] = useState(false)
 
@@ -180,7 +176,6 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 export default function PassengerDashboard() {
   const navigate = useNavigate()
 
@@ -192,9 +187,7 @@ export default function PassengerDashboard() {
   const [search,           setSearch]           = useState("")
   const [navTab,           setNavTab]           = useState("home")
   const [passengerProfile, setPassengerProfile] = useState(null)
-
-  // ── Passenger location state (separate from RideContext GPS) ──────────────
-  const [passengerLocation, setPassengerLocation] = useState(null) // [lat, lng]
+  const [passengerLocation, setPassengerLocation] = useState(null)
   const [locationName,      setLocationName]      = useState("")
   const [suggestions,       setSuggestions]       = useState([])
   const [showDrop,          setShowDrop]          = useState(false)
@@ -205,21 +198,16 @@ export default function PassengerDashboard() {
   const debTimer     = useRef(null)
   const dropRef      = useRef(null)
 
-  // ── Fetch profile ─────────────────────────────────────────────────────────
   useEffect(() => {
-    apiFetch("/auth/me")
-      .then(data => setPassengerProfile(data.user))
-      .catch(() => {})
+    apiFetch("/auth/me").then(data => setPassengerProfile(data.user)).catch(() => {})
   }, [])
 
-  // ── Auto-set location from RideContext GPS on first load ──────────────────
   useEffect(() => {
     if (!userLocation || passengerLocation) return
     setPassengerLocation(userLocation)
     reverseGeocode(userLocation[0], userLocation[1]).then(setLocationName)
   }, [userLocation])
 
-  // ── Autocomplete ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isUserTyping.current) return
     clearTimeout(debTimer.current)
@@ -235,7 +223,6 @@ export default function PassengerDashboard() {
     return () => clearTimeout(debTimer.current)
   }, [locationName])
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (dropRef.current && !dropRef.current.contains(e.target)) setShowDrop(false)
@@ -248,8 +235,7 @@ export default function PassengerDashboard() {
     isUserTyping.current = false
     setLocationName(item.short || item.label.split(",")[0])
     setPassengerLocation([item.lat, item.lng])
-    setSuggestions([])
-    setShowDrop(false)
+    setSuggestions([]); setShowDrop(false)
   }
 
   const useCurrentLocation = () => {
@@ -260,22 +246,18 @@ export default function PassengerDashboard() {
         const loc = [pos.coords.latitude, pos.coords.longitude]
         setPassengerLocation(loc)
         const name = await reverseGeocode(loc[0], loc[1])
-        isUserTyping.current = false
-        setLocationName(name)
+        isUserTyping.current = false; setLocationName(name)
       },
-      () => {
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            const loc = [pos.coords.latitude, pos.coords.longitude]
-            setPassengerLocation(loc)
-            const name = await reverseGeocode(loc[0], loc[1])
-            isUserTyping.current = false
-            setLocationName(name)
-          },
-          () => setLocationName(""),
-          { enableHighAccuracy: false, timeout: 15000 }
-        )
-      },
+      () => navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const loc = [pos.coords.latitude, pos.coords.longitude]
+          setPassengerLocation(loc)
+          const name = await reverseGeocode(loc[0], loc[1])
+          isUserTyping.current = false; setLocationName(name)
+        },
+        () => setLocationName(""),
+        { enableHighAccuracy: false, timeout: 15000 }
+      ),
       { enableHighAccuracy: true, timeout: 10000 }
     )
   }
@@ -284,24 +266,20 @@ export default function PassengerDashboard() {
     setPassengerLocation([lat, lng])
     setLocationName("Getting address…")
     const name = await reverseGeocode(lat, lng)
-    isUserTyping.current = false
-    setLocationName(name)
+    isUserTyping.current = false; setLocationName(name)
     setShowMapPicker(false)
   }
 
   const filtered = search.trim()
     ? nearbyRiders.filter((r) =>
-        [r.locationName, r.pickupArea, r.riderName]
-          .join(" ").toLowerCase()
-          .includes(search.toLowerCase())
+        [r.locationName, r.pickupArea, r.riderName].join(" ").toLowerCase().includes(search.toLowerCase())
       )
     : nearbyRiders
 
-  // ✅ Fix: pass passengerLocation as 4th argument to requestRide
   const handleRequest = useCallback(async (rideId, name, phone) => {
     try { await requestRide(rideId, name, phone, passengerLocation) }
     catch (err) { toast.error(err.message || "Failed to request ride") }
-  }, [requestRide, passengerLocation])  // ✅ passengerLocation in deps
+  }, [requestRide, passengerLocation])
 
   // ── View state routing ────────────────────────────────────────────────────
   if (viewState === "completed") return (
@@ -316,7 +294,15 @@ export default function PassengerDashboard() {
       <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
     </div>
   )
-  if (viewState === "waiting" || viewState === "ongoing") return (
+  // Passenger waits here after fare — rider hasn't started moving yet
+  if (viewState === "confirmed") return (
+    <div className="min-h-screen bg-gray-100 pb-24">
+      <UpcomingRide />
+      <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
+    </div>
+  )
+  // Only when rider clicks "Go Pick Up Passenger" → pickup_started / ongoing
+  if (viewState === "pickup_started" || viewState === "waiting" || viewState === "ongoing") return (
     <div className="min-h-screen bg-gray-100 pb-24 px-4 pt-4">
       <ActiveRidePanel />
       <BottomNav tab={navTab} setTab={setNavTab} navigate={navigate} />
@@ -327,8 +313,6 @@ export default function PassengerDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100 pb-24">
-
-      {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <button className="text-2xl leading-none">☰</button>
         <h1 className="text-lg font-semibold text-gray-900">
@@ -343,23 +327,14 @@ export default function PassengerDashboard() {
       <div className="mx-4 mb-3">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3">
           <p className="text-xs text-gray-400 font-medium mb-2">Your pickup location</p>
-
-          {/* Textbox with dropdown */}
           <div className="relative" ref={dropRef}>
-            <input
-              type="text"
-              value={locationName}
-              onChange={(e) => {
-                isUserTyping.current = true
-                setLocationName(e.target.value)
-              }}
+            <input type="text" value={locationName}
+              onChange={(e) => { isUserTyping.current = true; setLocationName(e.target.value) }}
               onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
               placeholder="Type your location…"
               className="w-full p-3 rounded-xl bg-gray-100 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
-            {loadingSugg && (
-              <span className="absolute right-3 top-3.5 text-gray-400 animate-spin select-none">⟳</span>
-            )}
+            {loadingSugg && <span className="absolute right-3 top-3.5 text-gray-400 animate-spin select-none">⟳</span>}
             {showDrop && suggestions.length > 0 && (
               <ul className="absolute z-50 left-0 right-0 mt-1 bg-white text-black border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
                 {suggestions.map((s, i) => (
@@ -374,8 +349,6 @@ export default function PassengerDashboard() {
               </ul>
             )}
           </div>
-
-          {/* Action buttons */}
           <div className="flex gap-2 mt-2">
             <button onClick={useCurrentLocation}
               className="flex items-center gap-1.5 text-xs text-teal-600 font-medium bg-teal-50 px-3 py-1.5 rounded-lg hover:bg-teal-100 transition">
@@ -390,15 +363,13 @@ export default function PassengerDashboard() {
         </div>
       </div>
 
-      {/* Map — toggleable picker or standard view */}
+      {/* Map */}
       <div className="mx-4 rounded-3xl overflow-hidden shadow-sm" style={{ height: showMapPicker ? 260 : 180 }}>
         {mapCenter ? (
           <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
             dragging zoomControl scrollWheelZoom={false}>
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
-            />
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
             {passengerLocation && <Marker position={passengerLocation} />}
             <RecenterMap position={passengerLocation} />
             {showMapPicker && <MapClickHandler onPick={handleMapPick} />}
@@ -430,7 +401,6 @@ export default function PassengerDashboard() {
               </span>
             )}
           </div>
-
           <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2.5">
             <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -452,7 +422,6 @@ export default function PassengerDashboard() {
           {loadingRiders && [1, 2].map((i) => (
             <div key={i} className="w-full h-36 rounded-2xl bg-gray-100 animate-pulse" />
           ))}
-
           {!loadingRiders && filtered.length === 0 && (
             <div className="py-10 text-center">
               <div className="text-4xl mb-2">🛵</div>
@@ -462,7 +431,6 @@ export default function PassengerDashboard() {
               <p className="text-gray-400 text-sm mt-1">Check back in a few minutes</p>
             </div>
           )}
-
           {!loadingRiders && filtered.map((ride) => (
             <RiderCard
               key={ride._id}

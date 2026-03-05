@@ -60,7 +60,6 @@ router.post("/:id/request", auth, wrap(async (req, res) => {
   })
 
   io.to("riders-watch").emit("ride:locked", { rideId: String(ride._id) })
-
   res.json({ success: true, data: { ride } })
 }))
 
@@ -75,7 +74,7 @@ router.post("/", auth, wrap(async (req, res) => {
   const {
     riderName, riderPhone, scooterNumber,
     pickupLat, pickupLng, currentLat, currentLng,
-    departureTime, departureTimeStr,                // ← added departureTimeStr
+    departureTime, departureTimeStr,
   } = req.body
 
   if (!pickupLat || !pickupLng || !currentLat || !currentLng) return res.status(400).json({
@@ -91,7 +90,7 @@ router.post("/", auth, wrap(async (req, res) => {
     if (existing.status === "pending") {
       await Ride.findByIdAndUpdate(existing._id, { $set: { status: "cancelled" } })
       io.to("riders-watch").emit("ride:removed", { rideId: String(existing._id) })
-      console.log(`Auto-cancelled previous pending ride ${existing._id} — allowing new post`)
+      console.log(`Auto-cancelled previous pending ride ${existing._id}`)
     } else {
       return res.status(400).json({
         success: false,
@@ -101,12 +100,12 @@ router.post("/", auth, wrap(async (req, res) => {
   }
 
   const ride = await Ride.create({
-    riderId:      req.user._id,
-    riderName:    riderName    || req.user.firstName || "Rider",
-    riderPhone:   riderPhone   || req.user.phone     || "",
-    scooterNumber: scooterNumber || "N/A",
+    riderId:          req.user._id,
+    riderName:        riderName    || req.user.firstName || "Rider",
+    riderPhone:       riderPhone   || req.user.phone     || "",
+    scooterNumber:    scooterNumber || "N/A",
     departureTime:    departureTime    || null,
-    departureTimeStr: departureTimeStr || departureTime || "",  // ← saved correctly
+    departureTimeStr: departureTimeStr || departureTime || "",
     currentLocation: {
       type: "Point",
       coordinates: [parseFloat(currentLng), parseFloat(currentLat)],
@@ -124,16 +123,13 @@ router.post("/", auth, wrap(async (req, res) => {
 
 router.get("/my", auth, wrap(async (req, res) => {
   const rides = await Ride.find({ riderId: req.user._id })
-    .sort({ createdAt: -1 })
-    .limit(20)
-    .lean()
+    .sort({ createdAt: -1 }).limit(20).lean()
   res.json({ success: true, data: { rides } })
 }))
 
 // ── CANCEL ────────────────────────────────────────────────────────────────────
 router.post("/:id/cancel", auth, wrap(async (req, res) => {
   const ride = await Ride.findOne({ _id: req.params.id, riderId: req.user._id })
-
   if (!ride) {
     console.log(`Cancel 404 for ride ${req.params.id} — already cancelled or not found`)
     return res.json({ success: true, alreadyCancelled: true })
@@ -146,7 +142,6 @@ router.post("/:id/cancel", auth, wrap(async (req, res) => {
   }
 
   await Ride.findByIdAndUpdate(ride._id, { $set: { status: "cancelled" } })
-
   const room = io.sockets.adapter.rooms.get("riders-watch")
   console.log(`Ride ${ride._id} cancelled — notifying ${room?.size || 0} passengers in riders-watch`)
   io.to("riders-watch").emit("ride:removed", { rideId: String(ride._id) })
@@ -161,10 +156,8 @@ router.post("/:id/pickup-start", auth, wrap(async (req, res) => {
     success: false,
     error: { code: "INVALID_STATUS", message: "Ride must be locked to start pickup" },
   })
-
   await Ride.findByIdAndUpdate(ride._id, { $set: { status: "pickup_started" } })
   io.to(`ride:${ride._id}`).emit("ride:pickup_started", { rideId: String(ride._id) })
-
   res.json({ success: true })
 }))
 

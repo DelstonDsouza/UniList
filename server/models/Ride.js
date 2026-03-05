@@ -5,7 +5,7 @@ import mongoose from "mongoose"
 const GeoPointSchema = new mongoose.Schema(
   {
     type:        { type: String, enum: ["Point"], default: "Point" },
-    coordinates: { type: [Number], required: true }, // [lng, lat]
+    coordinates: { type: [Number], required: true },
   },
   { _id: false }
 )
@@ -31,58 +31,48 @@ const FareSchema = new mongoose.Schema(
 
 const RideSchema = new mongoose.Schema(
   {
-    // Rider info
     riderId:       { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     riderName:     { type: String, default: "", trim: true },
     riderPhone:    { type: String, default: "", trim: true },
     scooterNumber: { type: String, default: "N/A", trim: true },
 
-    // Locations (GeoJSON — coordinates = [lng, lat])
     currentLocation: { type: GeoPointSchema, required: true },
     pickupLocation:  { type: GeoPointSchema, required: true },
 
-    // College destination
     collegeDestination: {
       name: { type: String, default: "" },
       lat:  { type: Number, default: null },
       lng:  { type: Number, default: null },
     },
 
-    // Departure time
-    departureTime:    { type: String, default: "" },  // "HH:mm" 24h format
-    departureTimeStr: { type: String, default: "" },  // "10:30 AM" display format
+    departureTime:    { type: String, default: "" },
+    departureTimeStr: { type: String, default: "" },
 
-    // State machine
+    // ← pickup_started added
     status: {
       type: String,
-      enum: ["pending", "locked", "ongoing", "completed", "cancelled"],
+      enum: ["pending", "locked", "pickup_started", "ongoing", "completed", "cancelled"],
       default: "pending",
     },
 
-    // Passenger — null until someone requests
     passenger: { type: PassengerSchema, default: null },
+    fare:      { type: FareSchema,      default: null },
 
-    // Fare — null until locked
-    fare: { type: FareSchema, default: null },
-
-    // Payment
     payment: {
       method: { type: String, enum: ["cash", "upi", null], default: null },
-      status: { type: String, enum: ["pending", "paid"], default: "pending" },
+      status: { type: String, enum: ["pending", "paid"],   default: "pending" },
     },
 
-    // Timestamps
-    lockedAt:    { type: Date, default: null },
+    lockedAt:    { type: Date,   default: null },
     otp:         { type: String, default: null },
-    startedAt:   { type: Date, default: null },
-    completedAt: { type: Date, default: null },
+    startedAt:   { type: Date,   default: null },
+    completedAt: { type: Date,   default: null },
   },
   { timestamps: true }
 )
 
-// 2dsphere indexes for geo queries
 RideSchema.index({ currentLocation: "2dsphere" })
-RideSchema.index({ pickupLocation: "2dsphere" })
+RideSchema.index({ pickupLocation:  "2dsphere" })
 RideSchema.index({ riderId: 1, status: 1 })
 RideSchema.index({ status: 1 })
 
