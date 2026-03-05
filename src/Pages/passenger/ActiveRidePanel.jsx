@@ -1,5 +1,5 @@
 // src/pages/passenger/ActiveRidePanel.jsx
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState } from "react"
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
@@ -13,11 +13,11 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-const COLLEGE = [12.872109642876621, 74.84534749009204]
+const COLLEGE         = [12.872109642876621, 74.84534749009204]
 const AVG_SPEED_KMH   = 40
 const PEAK_MULTIPLIER = 1.5
-const PEAK_START      = 8   // 8 AM
-const PEAK_END        = 9   // 9 AM
+const PEAK_START      = 8
+const PEAK_END        = 9
 
 function isPeakHour() {
   const h = new Date().getHours()
@@ -33,8 +33,8 @@ function calcEta(fromLat, fromLng, toLat, toLng) {
     Math.cos((fromLat * Math.PI) / 180) *
     Math.cos((toLat   * Math.PI) / 180) *
     Math.sin(dLng / 2) ** 2
-  const distKm  = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  const speed   = isPeakHour() ? AVG_SPEED_KMH / PEAK_MULTIPLIER : AVG_SPEED_KMH
+  const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  const speed  = isPeakHour() ? AVG_SPEED_KMH / PEAK_MULTIPLIER : AVG_SPEED_KMH
   return { distKm: Number(distKm.toFixed(1)), etaMin: Math.max(1, Math.round((distKm / speed) * 60)) }
 }
 
@@ -110,7 +110,6 @@ function ReportModal({ onClose, rideId }) {
 
   const submit = () => {
     if (!selected) return
-    // In production send to API: apiFetch(`/rides/${rideId}/report`, { method: "POST", body: { reason: selected, details } })
     setSent(true)
   }
 
@@ -187,15 +186,21 @@ function HelpModal({ onClose }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ActiveRidePanel() {
-  const { activeRide, fareInfo, userLocation, viewState } = useRide()
+  const { activeRide, fareInfo, viewState } = useRide()
 
-  const [riderPos,     setRiderPos]     = useState(null)
-  const [routeCoords,  setRouteCoords]  = useState([])
-  const [etaToMe,      setEtaToMe]      = useState(null)  // rider → passenger (waiting)
-  const [etaToDest,    setEtaToDest]    = useState(null)  // rider → college (ongoing)
-  const [distToDest,   setDistToDest]   = useState(null)
-  const [showReport,   setShowReport]   = useState(false)
-  const [showHelp,     setShowHelp]     = useState(false)
+  // ✅ Use passenger's saved pickup location from the ride (set when they booked)
+  // Falls back to GPS userLocation only if not available in ride data
+  const pickupLat = activeRide?.passenger?.location?.coordinates?.[1]
+  const pickupLng = activeRide?.passenger?.location?.coordinates?.[0]
+  const passengerPos = pickupLat && pickupLng ? [pickupLat, pickupLng] : null
+
+  const [riderPos,    setRiderPos]    = useState(null)
+  const [routeCoords, setRouteCoords] = useState([])
+  const [etaToMe,     setEtaToMe]     = useState(null)
+  const [etaToDest,   setEtaToDest]   = useState(null)
+  const [distToDest,  setDistToDest]  = useState(null)
+  const [showReport,  setShowReport]  = useState(false)
+  const [showHelp,    setShowHelp]    = useState(false)
   const abortRef = useRef(null)
 
   const isOngoing = viewState === "ongoing"
@@ -210,7 +215,7 @@ export default function ActiveRidePanel() {
     return () => socket.off("rider:location", handle)
   }, [activeRide?._id])
 
-  // ── Seed initial rider position ───────────────────────────────────────────
+  // ── Seed initial rider position from ride data ────────────────────────────
   useEffect(() => {
     const lat = activeRide?.currentLocation?.coordinates?.[1]
     const lng = activeRide?.currentLocation?.coordinates?.[0]
@@ -220,7 +225,9 @@ export default function ActiveRidePanel() {
   // ── Fetch OSRM route for live polyline ────────────────────────────────────
   useEffect(() => {
     if (!riderPos) return
-    const dest = isOngoing ? COLLEGE : (userLocation || COLLEGE)
+    // ✅ During waiting: route goes rider → passenger's saved pickup location
+    // During ongoing: route goes rider → college
+    const dest = isOngoing ? COLLEGE : passengerPos
     if (!dest) return
 
     if (abortRef.current) abortRef.current.abort()
@@ -242,15 +249,15 @@ export default function ActiveRidePanel() {
       .catch(e => { if (e.name !== "AbortError") console.warn("OSRM:", e) })
 
     return () => ctrl.abort()
-  }, [riderPos?.[0], riderPos?.[1], isOngoing])
+  }, [riderPos?.[0], riderPos?.[1], isOngoing, passengerPos?.[0], passengerPos?.[1]])
 
   // ── ETA calculation ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!riderPos) return
-    const peak = isPeakHour()
 
-    if (isWaiting && userLocation) {
-      const { etaMin } = calcEta(riderPos[0], riderPos[1], userLocation[0], userLocation[1])
+    if (isWaiting && passengerPos) {
+      // ✅ ETA from rider → passenger's saved pickup location (not GPS)
+      const { etaMin } = calcEta(riderPos[0], riderPos[1], passengerPos[0], passengerPos[1])
       setEtaToMe(etaMin)
       setEtaToDest(null)
     } else if (isOngoing) {
@@ -259,23 +266,21 @@ export default function ActiveRidePanel() {
       setDistToDest(distKm)
       setEtaToMe(null)
     }
-  }, [riderPos, userLocation, isWaiting, isOngoing])
+  }, [riderPos, passengerPos, isWaiting, isOngoing])
 
   if (!activeRide) return null
 
-  const passengerPos = userLocation || null
   const mapCenter    = riderPos || passengerPos || COLLEGE
   const otp          = activeRide.otp || null
   const showOtp      = isWaiting && otp
 
-  // Map positions for AutoFit
   const fitPositions = isOngoing
     ? [riderPos, COLLEGE].filter(Boolean)
     : [riderPos, passengerPos].filter(Boolean)
 
-  const etaDisplay   = isOngoing ? etaToDest : etaToMe
-  const etaLabel     = isOngoing ? "ETA to College" : "Rider arrives in"
-  const isPeak       = isPeakHour()
+  const etaDisplay = isOngoing ? etaToDest : etaToMe
+  const etaLabel   = isOngoing ? "ETA to College" : "Rider arrives in"
+  const isPeak     = isPeakHour()
 
   return (
     <>
@@ -354,7 +359,6 @@ export default function ActiveRidePanel() {
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
 
-            {/* Route polyline */}
             {routeCoords.length > 1 && (
               <Polyline positions={routeCoords}
                 pathOptions={{ color: isOngoing ? "#16a34a" : "#2563eb", weight: 5, opacity: 0.85 }} />
@@ -363,15 +367,13 @@ export default function ActiveRidePanel() {
             {/* Rider */}
             {riderPos && <Marker position={riderPos} icon={riderIcon} />}
 
-            {/* Passenger (waiting phase) */}
+            {/* ✅ Passenger's saved pickup location (not GPS) */}
             {!isOngoing && passengerPos && (
               <Marker position={passengerPos} icon={passengerIcon} />
             )}
 
-            {/* College (ongoing phase) */}
-            {isOngoing && (
-              <Marker position={COLLEGE} icon={collegeIcon} />
-            )}
+            {/* College */}
+            {isOngoing && <Marker position={COLLEGE} icon={collegeIcon} />}
 
             <AutoFit positions={fitPositions} />
           </MapContainer>
@@ -412,7 +414,7 @@ export default function ActiveRidePanel() {
             <div style={{ background: "#14b8a6", borderRadius: 14, padding: "12px 14px", gridColumn: "1 / -1" }}>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", margin: "0 0 2px", fontWeight: 600 }}>FARE</p>
               <p style={{ fontSize: 22, fontWeight: 900, margin: 0 }}>
-                ₹{fareInfo?.amount ?? "—"}
+                ₹{fareInfo?.amount ?? activeRide?.fare?.amount ?? "—"}
                 <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 6, opacity: 0.8 }}>cash</span>
               </p>
             </div>

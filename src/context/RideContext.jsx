@@ -15,12 +15,12 @@ export function RideProvider({ children }) {
   const [activeRide,       setActiveRide]       = useState(null)
   const [fareInfo,         setFareInfo]         = useState(null)
   const [requestingRideId, setRequestingRideId] = useState(null)
+  const [restoringRide,    setRestoringRide]    = useState(true)  // ✅ blocks render until check done
 
   const userLocationRef = useRef(null)
-  const activeRideRef   = useRef(null)  // ref so fallback poll doesn't cause re-render loops
+  const activeRideRef   = useRef(null)
   const viewStateRef    = useRef("discovery")
 
-  // Keep refs in sync
   useEffect(() => { activeRideRef.current = activeRide }, [activeRide])
   useEffect(() => { viewStateRef.current  = viewState  }, [viewState])
 
@@ -42,6 +42,27 @@ export function RideProvider({ children }) {
     )
   }, [])
 
+  // ── ✅ Restore active ride on page refresh / mount ────────────────────────
+  // Runs once. If the passenger has an active ride in DB, restore correct view.
+  useEffect(() => {
+    if (!getToken()) { setRestoringRide(false); return }
+
+    apiFetch("/rides/active")
+      .then(data => {
+        const ride = data?.ride || data?.data?.ride
+        if (!ride) return
+
+        setActiveRide(ride)
+        setFareInfo(ride.fare || null)
+
+        if (ride.status === "locked")    setViewState("waiting")
+        if (ride.status === "ongoing")   setViewState("ongoing")
+        if (ride.status === "completed") setViewState("completed")
+      })
+      .catch(() => {})
+      .finally(() => setRestoringRide(false))
+  }, [])
+
   // ── Fetch nearby riders ───────────────────────────────────────────────────────
   const fetchRiders = useCallback(async (loc) => {
     const coords = loc || userLocationRef.current
@@ -58,7 +79,7 @@ export function RideProvider({ children }) {
     }
   }, [])
 
-  // ── Socket setup — runs ONCE on mount, stays alive ──────────────────────────
+  // ── Socket setup ─────────────────────────────────────────────────────────────
   useEffect(() => {
     connectSocket()
 
@@ -86,7 +107,7 @@ export function RideProvider({ children }) {
         Math.cos((riderLat * Math.PI) / 180) *
         Math.sin(dLng / 2) ** 2
       const dist = 2 * R * Math.asin(Math.sqrt(a))
-      if (dist <= 5) {  // generous client filter — server does the real route check
+      if (dist <= 5) {
         setNearbyRiders(prev => {
           if (prev.find(r => r._id === ride._id)) return prev
           return [ride, ...prev]
@@ -94,18 +115,9 @@ export function RideProvider({ children }) {
       }
     }
 
-    const handleRideRemoved = ({ rideId }) => {
-      console.log("ride:removed:", rideId)
-      setNearbyRiders(prev => prev.filter(r => r._id !== rideId))
-    }
-
-    const handleRideCancelled = () => {
-      setActiveRide(null)
-      setFareInfo(null)
-      setViewState("discovery")
-    }
-
-    const handleRideStarted = () => setViewState("ongoing")
+    const handleRideRemoved   = ({ rideId }) => setNearbyRiders(prev => prev.filter(r => r._id !== rideId))
+    const handleRideCancelled = () => { setActiveRide(null); setFareInfo(null); setViewState("discovery") }
+    const handleRideStarted   = () => setViewState("ongoing")
     const handleRideCompleted = () => setViewState("completed")
 
     socket.on("ride:new",       handleNewRide)
@@ -117,7 +129,7 @@ export function RideProvider({ children }) {
 
     return () => {
       clearTimeout(joinTimer)
-      socket.off("connect",       joinRoom)
+      socket.off("connect",        joinRoom)
       socket.off("ride:new",       handleNewRide)
       socket.off("ride:removed",   handleRideRemoved)
       socket.off("ride:locked",    handleRideRemoved)
@@ -128,7 +140,7 @@ export function RideProvider({ children }) {
     }
   }, [])
 
-  // ── Fetch riders when GPS ready + 30s safety net ────────────────────────────
+  // ── Fetch riders when GPS ready + 30s refresh ────────────────────────────────
   useEffect(() => {
     if (!userLocation) return
     fetchRiders(userLocation)
@@ -142,8 +154,7 @@ export function RideProvider({ children }) {
     socket.emit("join:passenger", activeRide._id)
   }, [activeRide?._id])
 
-  // ── Fallback poll — only updates state when something actually CHANGED ───────
-  // Uses refs to avoid triggering re-renders when status is unchanged
+  // ── Fallback poll — only when ride is active ──────────────────────────────────
   useEffect(() => {
     if (viewState === "discovery" || viewState === "completed") return
 
@@ -154,14 +165,10 @@ export function RideProvider({ children }) {
         const vs   = viewStateRef.current
 
         if (!ride) {
-          if (vs !== "discovery") {
-            setViewState("discovery")
-            setActiveRide(null)
-          }
+          if (vs !== "discovery") { setViewState("discovery"); setActiveRide(null) }
           return
         }
 
-        // Only update activeRide if something meaningful changed (avoids map remount)
         const prev = activeRideRef.current
         if (!prev || prev._id !== ride._id || prev.status !== ride.status) {
           setActiveRide(ride)
@@ -177,11 +184,12 @@ export function RideProvider({ children }) {
   }, [viewState])
 
   // ── Request a ride ────────────────────────────────────────────────────────────
-  const requestRide = async (rideId, passengerName, passengerPhone) => {
-    if (!userLocation) throw new Error("GPS location required")
+  const requestRide = async (rideId, passengerName, passengerPhone, selectedLocation) => {
+    const location = selectedLocation || userLocation
+    if (!location) throw new Error("Location required")
     setRequestingRideId(rideId)
     try {
-      const [lat, lng] = userLocation
+      const [lat, lng] = location
       const data = await apiFetch(`/rides/${rideId}/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -211,6 +219,16 @@ export function RideProvider({ children }) {
     setViewState("discovery")
     fetchRiders()
   }
+
+  // ✅ Brief loading screen while checking for active ride on refresh
+  if (restoringRide) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex flex-col items-center gap-3 text-gray-400">
+        <div className="w-8 h-8 border-4 border-teal-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm">Loading your ride…</p>
+      </div>
+    </div>
+  )
 
   return (
     <RideContext.Provider value={{

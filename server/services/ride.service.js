@@ -22,21 +22,41 @@ function generateOTP() {
 }
 
 // ── ROUTE ELIGIBILITY + PICKUP POINT ─────────────────────────────────────────
+//
+// Rules:
+//  1. Same-route visibility limit: 2 km
+//     - Fetch the rider's route (riderLocation → college).
+//     - Find the nearest point on that route to the passenger.
+//     - If the passenger is >2 km from the route → not eligible (don't show ride).
+//     - The nearest route point must be AHEAD of the rider (not behind), so the
+//       rider never has to go in the opposite direction of the college.
+//
+//  2. Pickup threshold: 1 km
+//     - If passenger is ≤1 km from the route → pick up at their exact location.
+//     - If passenger is 1–2 km from the route → show the ride, but set pickup
+//       point to the nearest main-road point. Flag needsToWalkToRoute = true so
+//       the frontend can draw a red path from passenger → nearest route point.
+//     - If passenger is >2 km from the route → not eligible (filtered above).
+//
 async function getPickupInfo(ride, passengerLat, passengerLng) {
   const riderLat = ride.currentLocation?.coordinates?.[1]
   const riderLng = ride.currentLocation?.coordinates?.[0]
   if (!riderLat || !riderLng) return null
 
-  const directDist = haversineKm(riderLat, riderLng, passengerLat, passengerLng)
-  if (directDist > 10) return null
+  // Quick pre-filter: if passenger is >10 km straight-line from rider, skip OSRM call
+  const directDistToRider = haversineKm(riderLat, riderLng, passengerLat, passengerLng)
+  if (directDistToRider > 10) return null
 
+  // Fetch rider's full route to college
   const routePoints = await fetchOSRMRoute(riderLat, riderLng, COLLEGE.lat, COLLEGE.lng)
 
+  // ── No OSRM route available: fallback to straight-line check ─────────────
   if (!routePoints) {
-    if (directDist > 3) return null
-    const distanceKm = Number(directDist.toFixed(2))
+    if (directDistToRider > 2) return null  // Same-route visibility limit
+    const { km, fare } = calculateFare(passengerLat, passengerLng)
     return {
-      distanceKm,
+      distanceKm:         km,
+      fareAmount:         fare,
       distToRoute:        0,
       pickupLat:          passengerLat,
       pickupLng:          passengerLng,
@@ -47,17 +67,34 @@ async function getPickupInfo(ride, passengerLat, passengerLng) {
     }
   }
 
-  const { nearestLat, nearestLng, distanceKm: distToRoute } = nearestPointOnRoute(
-    routePoints, passengerLat, passengerLng
-  )
+  // ── Find nearest point on route to passenger ──────────────────────────────
+  const { nearestLat, nearestLng, distanceKm: distToRoute, routeIndex } =
+    nearestPointOnRoute(routePoints, passengerLat, passengerLng)
 
+  // ── Same-route visibility limit: 2 km ─────────────────────────────────────
   if (distToRoute > 2) return null
 
-  const distanceKm = Number(haversineKm(riderLat, riderLng, passengerLat, passengerLng).toFixed(2))
+  // ── Ahead-of-rider check (no backtracking) ────────────────────────────────
+  // The rider is at routePoints[0]. The nearest point on the route to the passenger
+  // must be at or after the rider's current position (index > 0 means ahead).
+  // We check by seeing if the nearest route point is closer to the college than
+  // the rider is — i.e., the rider doesn't need to reverse direction.
+  const riderToCollege    = haversineKm(riderLat, riderLng, COLLEGE.lat, COLLEGE.lng)
+  const nearestToCollege  = haversineKm(nearestLat, nearestLng, COLLEGE.lat, COLLEGE.lng)
 
+  // If the nearest route point is FURTHER from college than the rider → passenger
+  // is behind the rider → rider would have to backtrack → reject.
+  if (nearestToCollege > riderToCollege + 0.1) return null  // 100m tolerance
+
+  // ── Calculate fare from passenger's actual location → college ─────────────
+  const { km, fare } = calculateFare(passengerLat, passengerLng)
+
+  // ── Pickup threshold: 1 km ────────────────────────────────────────────────
   if (distToRoute <= 1) {
+    // Passenger is close enough to route — pick up at their exact location
     return {
-      distanceKm,
+      distanceKm:         km,
+      fareAmount:         fare,
       distToRoute:        Number(distToRoute.toFixed(3)),
       pickupLat:          passengerLat,
       pickupLng:          passengerLng,
@@ -67,15 +104,18 @@ async function getPickupInfo(ride, passengerLat, passengerLng) {
       osrmAvailable:      true,
     }
   } else {
+    // Passenger is 1–2 km from route — they must walk to the nearest route point.
+    // Pickup point is set to the nearest main road point.
     return {
-      distanceKm,
+      distanceKm:         km,
+      fareAmount:         fare,
       distToRoute:        Number(distToRoute.toFixed(3)),
-      pickupLat:          nearestLat,
+      pickupLat:          nearestLat,   // rider picks up at route point
       pickupLng:          nearestLng,
-      needsToWalkToRoute: true,
+      needsToWalkToRoute: true,         // frontend draws red walk path
       nearestRouteLat:    nearestLat,
       nearestRouteLng:    nearestLng,
-      passengerActualLat: passengerLat,
+      passengerActualLat: passengerLat, // passenger's real location (for red path start)
       passengerActualLng: passengerLng,
       osrmAvailable:      true,
     }
@@ -104,7 +144,7 @@ export async function getNearbyRides(passengerLat, passengerLng) {
 
   return results
     .filter(Boolean)
-    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .sort((a, b) => a.distToRoute - b.distToRoute)  // sort by proximity to route
 }
 
 // ── LOCK RIDE ─────────────────────────────────────────────────────────────────
@@ -116,9 +156,9 @@ export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
   const pickupInfo = await getPickupInfo(ride, lat, lng)
   if (!pickupInfo) throw httpError("You are not on this rider's route.", 400)
 
-  const { km, fare } = calculateFare(pickupInfo.pickupLat, pickupInfo.pickupLng)
+  // ✅ Always calculate fare from passenger's actual location → college
+  const { km, fare } = calculateFare(lat, lng)
 
-  // ✅ Generate 4-digit OTP — passenger shows this to rider at pickup
   const otp = generateOTP()
 
   ride.passenger = {
@@ -128,7 +168,7 @@ export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
     location: { type: "Point", coordinates: [lng, lat] },
   }
   ride.fare = {
-    distanceKm:   km,
+    distanceKm:   km,    // ✅ passenger location → college
     amount:       fare,
     calculatedAt: new Date(),
   }

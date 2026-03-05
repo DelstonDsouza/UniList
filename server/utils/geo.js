@@ -70,12 +70,19 @@ export async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng) {
 
 /**
  * Find the closest point on a polyline to a given location.
- * Returns { nearestLat, nearestLng, distanceKm }
+ *
+ * Returns:
+ *   nearestLat   – lat of the closest projected point on the route
+ *   nearestLng   – lng of the closest projected point on the route
+ *   distanceKm   – straight-line distance from passenger to nearest route point
+ *   routeIndex   – index of the segment start where the nearest point was found
+ *                  (used by ride.service.js to check passenger is ahead of rider)
  */
 export function nearestPointOnRoute(routePoints, passengerLat, passengerLng) {
-  let bestDist = Infinity
-  let bestLat  = routePoints[0][0]
-  let bestLng  = routePoints[0][1]
+  let bestDist  = Infinity
+  let bestLat   = routePoints[0][0]
+  let bestLng   = routePoints[0][1]
+  let bestIndex = 0
 
   for (let i = 0; i < routePoints.length - 1; i++) {
     const [lat1, lng1] = routePoints[i]
@@ -96,16 +103,18 @@ export function nearestPointOnRoute(routePoints, passengerLat, passengerLng) {
     const dist    = haversineKm(passengerLat, passengerLng, projLat, projLng)
 
     if (dist < bestDist) {
-      bestDist = dist
-      bestLat  = projLat
-      bestLng  = projLng
+      bestDist  = dist
+      bestLat   = projLat
+      bestLng   = projLng
+      bestIndex = i   // ✅ track which segment the nearest point belongs to
     }
   }
 
   return {
-    nearestLat: bestLat,
-    nearestLng: bestLng,
-    distanceKm: Number(bestDist.toFixed(3)),
+    nearestLat:  bestLat,
+    nearestLng:  bestLng,
+    distanceKm:  Number(bestDist.toFixed(3)),
+    routeIndex:  bestIndex,   // ✅ returned for ahead-of-rider check
   }
 }
 

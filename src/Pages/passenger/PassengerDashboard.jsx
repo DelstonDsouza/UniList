@@ -119,7 +119,6 @@ function Stars({ rating = 0 }) {
 function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerProfile }) {
   const [confirming, setConfirming] = useState(false)
 
-  // Calculate real distance from passenger's chosen location to rider's pickup
   const riderLat = ride.currentLocation?.coordinates?.[1]
   const riderLng = ride.currentLocation?.coordinates?.[0]
   const dist = passengerLocation && riderLat && riderLng
@@ -161,22 +160,22 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
       </div>
 
       {!confirming ? (
-  <button onClick={() => setConfirming(true)} disabled={requesting}
-    className="w-full py-3 rounded-xl bg-gray-900 text-white text-base font-semibold hover:bg-gray-700 active:scale-95 transition disabled:opacity-50">
-    Accept Ride
-  </button>
-) : (
-  <div className="flex gap-2">
-    <button onClick={() => setConfirming(false)}
-      className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-600 text-base font-medium hover:bg-gray-50 transition">
-      Back
-    </button>
-    <button onClick={handleConfirm} disabled={requesting || !passengerProfile}
-      className="flex-1 py-3 rounded-xl bg-teal-500 text-white text-base font-semibold hover:bg-teal-600 transition disabled:opacity-50">
-      {requesting ? "Locking…" : "Confirm"}
-    </button>
-  </div>
-)}
+        <button onClick={() => setConfirming(true)} disabled={requesting}
+          className="w-full py-3 rounded-xl bg-gray-900 text-white text-base font-semibold hover:bg-gray-700 active:scale-95 transition disabled:opacity-50">
+          Accept Ride
+        </button>
+      ) : (
+        <div className="flex gap-2">
+          <button onClick={() => setConfirming(false)}
+            className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-600 text-base font-medium hover:bg-gray-50 transition">
+            Back
+          </button>
+          <button onClick={handleConfirm} disabled={requesting || !passengerProfile}
+            className="flex-1 py-3 rounded-xl bg-teal-500 text-white text-base font-semibold hover:bg-teal-600 transition disabled:opacity-50">
+            {requesting ? "Locking…" : "Confirm"}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -298,10 +297,11 @@ export default function PassengerDashboard() {
       )
     : nearbyRiders
 
+  // ✅ Fix: pass passengerLocation as 4th argument to requestRide
   const handleRequest = useCallback(async (rideId, name, phone) => {
-    try { await requestRide(rideId, name, phone) }
+    try { await requestRide(rideId, name, phone, passengerLocation) }
     catch (err) { toast.error(err.message || "Failed to request ride") }
-  }, [requestRide])
+  }, [requestRide, passengerLocation])  // ✅ passengerLocation in deps
 
   // ── View state routing ────────────────────────────────────────────────────
   if (viewState === "completed") return (
@@ -402,7 +402,6 @@ export default function PassengerDashboard() {
             {passengerLocation && <Marker position={passengerLocation} />}
             <RecenterMap position={passengerLocation} />
             {showMapPicker && <MapClickHandler onPick={handleMapPick} />}
-
           </MapContainer>
         ) : (
           <div className="h-full flex flex-col items-center justify-center bg-slate-100 text-gray-400 text-sm gap-2">
