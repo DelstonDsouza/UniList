@@ -38,6 +38,8 @@ function RoutePolyline({ from, to }) {
   return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5 }} />
 }
 
+const POST_LOCK_KEY = "rider_posting_lock"
+
 export default function RiderSearching() {
   const location = useLocation()
   const navigate  = useNavigate()
@@ -53,22 +55,12 @@ export default function RiderSearching() {
     scooterNumber,
   } = location.state || {}
 
-  // Rider's actual GPS for server currentLat/Lng; pinned location for pickupLat/Lng
   const currentGps = liveGpsLocation || userLocation
 
   const [status, setStatus] = useState("posting")
   const [error,  setError]  = useState("")
   const [dots,   setDots]   = useState("")
-
-  // ── Guards against React StrictMode double-invoke ────────────────────────
-  const hasPosted   = useRef(false)  // prevents double POST
-  const rideIdRef   = useRef(null)
-  const mountedRef  = useRef(true)
-
-  useEffect(() => {
-    const t = setInterval(() => setDots(p => p.length >= 3 ? "" : p + "."), 500)
-    return () => clearInterval(t)
-  }, [])
+  const mountedRef = useRef(true)
 
   useEffect(() => {
     mountedRef.current = true
@@ -76,57 +68,60 @@ export default function RiderSearching() {
   }, [])
 
   useEffect(() => {
+    const t = setInterval(() => setDots(p => p.length >= 3 ? "" : p + "."), 500)
+    return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
     if (!userLocation || !collegeLocation) return
-    if (hasPosted.current) return   // ← StrictMode guard: only post once
-    hasPosted.current = true
+
+    if (sessionStorage.getItem(POST_LOCK_KEY) === "true") {
+      console.log("RiderSearching: post already in progress, skipping duplicate")
+      return
+    }
+    sessionStorage.setItem(POST_LOCK_KEY, "true")
 
     const postRide = async () => {
       try {
         setStatus("posting")
         const data = await apiFetch("/rides", {
-          method: "POST",
+          method:  "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            riderName:     riderName     || "",
-            riderPhone:    riderPhone    || "",
-            scooterNumber: scooterNumber || "N/A",
-            currentLat:    (currentGps || userLocation)[0],
-            currentLng:    (currentGps || userLocation)[1],
-            pickupLat:     userLocation[0],   // pinned pickup point
-            pickupLng:     userLocation[1],
-            departureTime: departureTimeRaw || null,
+            riderName:       riderName     || "",
+            riderPhone:      riderPhone    || "",
+            scooterNumber:   scooterNumber || "N/A",
+            currentLat:      (currentGps || userLocation)[0],
+            currentLng:      (currentGps || userLocation)[1],
+            pickupLat:       userLocation[0],
+            pickupLng:       userLocation[1],
+            departureTime:   departureTimeRaw || null,
+            departureTimeStr: departureTime   || "",  // ← formatted "3:10 AM"
           }),
         })
 
         const rideId = data?.data?.ride?._id
         if (!rideId) throw new Error("No ride ID returned from server")
 
-        rideIdRef.current = rideId
+        sessionStorage.removeItem(POST_LOCK_KEY)
         if (!mountedRef.current) return
 
         setStatus("waiting")
-
-        // Navigate immediately to RiderWait
         navigate(`/rider-wait/${rideId}`, {
-          state: {
-            userLocation,
-            collegeLocation,
-            departureTime,
-            departureTimeRaw,
-          },
+          state: { userLocation, collegeLocation, departureTime, departureTimeRaw },
           replace: true,
         })
 
       } catch (err) {
+        sessionStorage.removeItem(POST_LOCK_KEY)
         if (!mountedRef.current) return
-        hasPosted.current = false  // allow retry on error
         setError(err.message || "Failed to post ride")
         setStatus("error")
       }
     }
 
     postRide()
-  }, [])  // empty deps — intentional, guard handles StrictMode
+  }, [])
 
   if (!userLocation || !collegeLocation) {
     return (
@@ -162,7 +157,10 @@ export default function RiderSearching() {
           <>
             <p className="text-red-500 font-medium text-center">{error}</p>
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                sessionStorage.removeItem(POST_LOCK_KEY)
+                navigate(-1)
+              }}
               className="mt-2 px-6 py-2 bg-gray-200 rounded-xl text-gray-700"
             >
               Go Back
