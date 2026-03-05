@@ -4,12 +4,9 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { Toaster } from "react-hot-toast"
 
-import Navbar from "./components/layout/Navbar"
-import Footer from "./components/layout/Footer"
 import { RideProvider } from "./context/RideContext"
 
 import Login from "./pages/auth/Login"
-import Register from "./pages/auth/Register"
 import RegisterDetails from "./pages/auth/RegisterDetails"
 import SelectRole from "./pages/auth/SelectRole"
 import Home from "./pages/home/Home"
@@ -44,58 +41,47 @@ const AuthGate = ({ children }) => {
 }
 
 function App() {
-  const location = useLocation()
-
-  const showNavbar = location.pathname === "/"
-  const showFooter = location.pathname === "/"
-
   return (
     <RideProvider>
       <Toaster position="top-center" reverseOrder={false} />
 
-      {showNavbar && <Navbar />}
-      <div className={showNavbar ? "pt-24" : ""}>
-        <Routes>
+      <Routes>
 
-          {/* ── Public ───────────────────────────────────────────────────── */}
-          <Route path="/"            element={<Home />} />
-          <Route path="/login"       element={<Login />} />
-          <Route path="/register"    element={<Register />} />
-          <Route path="/login/rider" element={<RiderLogin />} />
+        {/* ── Public ───────────────────────────────────────────────────── */}
+        <Route path="/"            element={<Home />} />
+        <Route path="/login"       element={<Login />} />
+        <Route path="/register"    element={<RegisterDetails />} />
+        <Route path="/login/rider" element={<RiderLogin />} />
 
-          {/* ── Onboarding ───────────────────────────────────────────────── */}
-          <Route path="/register-details" element={<AuthGate><RegisterDetails /></AuthGate>} />
-          <Route path="/select-role"      element={<AuthGate><SelectRole /></AuthGate>} />
+        {/* ── Onboarding ───────────────────────────────────────────────── */}
+        <Route path="/select-role" element={<AuthGate><SelectRole /></AuthGate>} />
 
-          {/* ── Rider ────────────────────────────────────────────────────── */}
-          <Route path="/rider"      element={<AuthGate><RiderHome /></AuthGate>} />
-          <Route path="/rider-home" element={<AuthGate><RiderHome /></AuthGate>} />
+        {/* ── Rider ────────────────────────────────────────────────────── */}
+        <Route path="/rider"      element={<AuthGate><RiderHome /></AuthGate>} />
+        <Route path="/rider-home" element={<AuthGate><RiderHome /></AuthGate>} />
 
-          <Route path="/pick-location"    element={<AuthGate><PickLocation /></AuthGate>} />
-          <Route path="/rider-searching"  element={<AuthGate><RiderSearching /></AuthGate>} />
-          <Route path="/ride-confirmed"   element={<AuthGate><RideConfirmed /></AuthGate>} />
-          <Route path="/ride-pickup"      element={<AuthGate><RidePickup /></AuthGate>} />
-          <Route path="/rider-otp-verify" element={<Navigate to="/ride-pickup" replace />} />
+        <Route path="/pick-location"    element={<AuthGate><PickLocation /></AuthGate>} />
+        <Route path="/rider-searching"  element={<AuthGate><RiderSearching /></AuthGate>} />
+        <Route path="/ride-confirmed"   element={<AuthGate><RideConfirmed /></AuthGate>} />
+        <Route path="/ride-pickup"      element={<AuthGate><RidePickup /></AuthGate>} />
+        <Route path="/rider-otp-verify" element={<Navigate to="/ride-pickup" replace />} />
 
-          <Route path="/giveride"           element={<AuthGate><GiveRide /></AuthGate>} />
-          <Route path="/rider-wait/:id"     element={<AuthGate><RiderWait /></AuthGate>} />
-          <Route path="/become-rider"       element={<AuthGate><BecomeRider /></AuthGate>} />
-          <Route path="/rider-registration" element={<AuthGate><RiderRegistration /></AuthGate>} />
+        <Route path="/giveride"           element={<AuthGate><GiveRide /></AuthGate>} />
+        <Route path="/rider-wait/:id"     element={<AuthGate><RiderWait /></AuthGate>} />
+        <Route path="/become-rider"       element={<AuthGate><BecomeRider /></AuthGate>} />
+        <Route path="/rider-registration" element={<AuthGate><RiderRegistration /></AuthGate>} />
 
-          {/* ── Passenger ────────────────────────────────────────────────── */}
-          <Route path="/passenger-home" element={<AuthGate><PassengerHome /></AuthGate>} />
-          <Route path="/dashboard"      element={<AuthGate><PassengerDashboard /></AuthGate>} />
+        {/* ── Passenger ────────────────────────────────────────────────── */}
+        <Route path="/passenger-home" element={<AuthGate><PassengerHome /></AuthGate>} />
+        <Route path="/dashboard"      element={<AuthGate><PassengerDashboard /></AuthGate>} />
 
-          {/* ── Admin ────────────────────────────────────────────────────── */}
-          <Route path="/admin" element={<AuthGate><Admin /></AuthGate>} />
+        {/* ── Admin ────────────────────────────────────────────────────── */}
+        <Route path="/admin" element={<AuthGate><Admin /></AuthGate>} />
 
-          {/* ── Catch-all ────────────────────────────────────────────────── */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+        {/* ── Catch-all ────────────────────────────────────────────────── */}
+        <Route path="*" element={<Navigate to="/" replace />} />
 
-        </Routes>
-      </div>
-
-      {showFooter && <Footer />}
+      </Routes>
     </RideProvider>
   )
 }

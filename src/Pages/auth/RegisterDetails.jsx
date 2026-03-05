@@ -9,13 +9,12 @@ export default function RegisterDetails() {
 
   const [universityId, setUniversityId] = useState("")
   const [email,        setEmail]        = useState("")
-  const [fetched,      setFetched]      = useState(null)  // student record from DB
+  const [fetched,      setFetched]      = useState(null)
   const [fetchError,   setFetchError]   = useState("")
   const [fetching,     setFetching]     = useState(false)
   const [submitting,   setSubmitting]   = useState(false)
   const [submitError,  setSubmitError]  = useState("")
 
-  // Auto-fetch student details from backend
   const handleFetch = async () => {
     const uid = universityId.trim().toUpperCase()
     if (!uid) return
@@ -172,6 +171,11 @@ export default function RegisterDetails() {
         >
           {submitting ? "Saving..." : "Register"}
         </button>
+
+        <p className="text-center text-sm text-gray-500">
+          Already registered?{" "}
+          <a href="/login" className="text-black font-medium underline">Sign in</a>
+        </p>
 
       </div>
     </div>

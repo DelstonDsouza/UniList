@@ -4,10 +4,9 @@ import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-lea
 import "leaflet/dist/leaflet.css"
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-
-import homeIcon from "../../assets/icons/home-icon.svg"
-import exploreIcon from "../../assets/icons/explore-icon.svg"
-import profileIcon from "../../assets/icons/profile-icon.svg"
+import { signOut } from "firebase/auth"
+import { auth } from "../../config/firebase"
+import { apiFetch } from "../../services/api"
 
 import L from "leaflet"
 delete L.Icon.Default.prototype._getIconUrl
@@ -17,8 +16,10 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
+// ── Map helpers ──────────────────────────────────────────────────────────────
+
 function RecenterMap({ position }) {
-  const map = useMap()
+  const map  = useMap()
   const prev = useRef(null)
   useEffect(() => {
     if (!position) return
@@ -34,7 +35,7 @@ function MapClickHandler({ onPick }) {
   return null
 }
 
-const NOMINATIM  = "/nominatim"
+const NOMINATIM   = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
 
 const extractShortName = (data) => {
@@ -82,30 +83,138 @@ const formatTime = (t) => {
   const [h, m] = t.split(":").map(Number)
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
 }
+
 const getMinTime = () => {
   const n = new Date()
-  return `${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}`
+  return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`
 }
 
-export default function RiderHome() {
-  const navigate = useNavigate()
+const formatDate = (dateStr) => {
+  if (!dateStr) return ""
+  return new Date(dateStr).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+}
 
-  // ── TWO separate location states ──────────────────────────────────────────
-  // liveGps   → rider's real GPS position (used only for map centering on mount)
-  // pinCoords → the pickup location the rider chose (map pin / search / GPS button)
-  //             THIS is what gets submitted. GPS watch never overwrites this.
+// ── Status badge ─────────────────────────────────────────────────────────────
+function StatusBadge({ status }) {
+  const map = {
+    completed:  { bg: "bg-green-100",  text: "text-green-700",  label: "Completed"  },
+    cancelled:  { bg: "bg-red-100",    text: "text-red-600",    label: "Cancelled"  },
+    active:     { bg: "bg-blue-100",   text: "text-blue-700",   label: "Active"     },
+  }
+  const s = map[status?.toLowerCase()] || { bg: "bg-gray-100", text: "text-gray-600", label: status }
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
+      {s.label}
+    </span>
+  )
+}
+
+// ── Avatar initials ──────────────────────────────────────────────────────────
+function Avatar({ name, size = "md" }) {
+  const initials = name
+    ? name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
+    : "R"
+  const sz = size === "lg" ? "w-16 h-16 text-xl" : "w-9 h-9 text-sm"
+  return (
+    <div className={`${sz} rounded-full bg-teal-600 flex items-center justify-center text-white font-bold flex-shrink-0`}>
+      {initials}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+export default function RiderHome() {
+  const navigate   = useNavigate()
+  const [tab, setTab] = useState("home") // "home" | "history" | "account"
+
+  // ── User info ─────────────────────────────────────────────────────────────
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}")
+  const [profile,     setProfile]     = useState(null)
+  const [profileLoad, setProfileLoad] = useState(true)
+
+  useEffect(() => {
+    apiFetch("/auth/me")
+      .then(data => setProfile(data.user || data))
+      .catch(() => setProfile(null))
+      .finally(() => setProfileLoad(false))
+  }, [])
+
+  const firstName = profile?.firstName || storedUser?.firstName || "Rider"
+  const fullName  = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : ""
+
+  // ── Profile dropdown ──────────────────────────────────────────────────────
+  const [showDropdown, setShowDropdown] = useState(false)
+  const dropdownRef = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
+        setShowDropdown(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  const handleLogout = async () => {
+    try { await signOut(auth) } catch {}
+    localStorage.clear()
+    navigate("/login", { replace: true })
+  }
+
+  // ── History ───────────────────────────────────────────────────────────────
+  const [history,     setHistory]     = useState([])
+  const [historyLoad, setHistoryLoad] = useState(false)
+  const [historyErr,  setHistoryErr]  = useState("")
+
+  useEffect(() => {
+    if (tab !== "history") return
+    setHistoryLoad(true)
+    setHistoryErr("")
+    const userId = profile?._id || storedUser?.uid || ""
+    apiFetch(`/rides/history?riderId=${userId}`)
+      .then(data => setHistory(Array.isArray(data.rides) ? data.rides : []))
+      .catch(() => setHistoryErr("Could not load ride history."))
+      .finally(() => setHistoryLoad(false))
+  }, [tab, profile])
+
+  // ── Account edit ──────────────────────────────────────────────────────────
+  const [editEmail,    setEditEmail]    = useState("")
+  const [editMode,     setEditMode]     = useState(false)
+  const [editLoading,  setEditLoading]  = useState(false)
+  const [editMsg,      setEditMsg]      = useState("")
+
+  const handleEditSave = async () => {
+    if (!editEmail.trim()) return
+    setEditLoading(true)
+    setEditMsg("")
+    try {
+      await apiFetch("/auth/profile", {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: editEmail.trim().toLowerCase() }),
+      })
+      setProfile(prev => ({ ...prev, email: editEmail.trim().toLowerCase() }))
+      setEditMsg("Email updated successfully!")
+      setEditMode(false)
+    } catch (err) {
+      setEditMsg(err.message || "Failed to update email.")
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  // ── Map / ride state ──────────────────────────────────────────────────────
   const [liveGps,       setLiveGps]       = useState(null)
-  const [pinCoords,     setPinCoords]     = useState(null)  // ← submitted pickup point
+  const [pinCoords,     setPinCoords]     = useState(null)
   const [locationName,  setLocationName]  = useState("")
   const [gpsStatus,     setGpsStatus]     = useState("loading")
   const [departureTime, setDepartureTime] = useState("")
   const [timeError,     setTimeError]     = useState(false)
   const [locError,      setLocError]      = useState(false)
   const [showPopup,     setShowPopup]     = useState(false)
-
-  const [suggestions, setSuggestions] = useState([])
-  const [showDrop,    setShowDrop]    = useState(false)
-  const [loadingSugg, setLoadingSugg] = useState(false)
+  const [suggestions,   setSuggestions]   = useState([])
+  const [showDrop,      setShowDrop]      = useState(false)
+  const [loadingSugg,   setLoadingSugg]   = useState(false)
 
   const isUserTyping = useRef(false)
   const debTimer     = useRef(null)
@@ -115,7 +224,6 @@ export default function RiderHome() {
   const collegeCoords = [12.872109642876621, 74.84534749009204]
   const collegeName   = "St Aloysius College, Mangalore"
 
-  // ── Set both pin and label (used when GPS or button sets location) ─────────
   const applyPin = useCallback(async (lat, lng) => {
     setPinCoords([lat, lng])
     setLocationName("Getting address…")
@@ -126,7 +234,6 @@ export default function RiderHome() {
     setGpsStatus("ok")
   }, [])
 
-  // ── GPS on mount — sets liveGps for map center + sets initial pin ──────────
   useEffect(() => {
     let cancelled = false
     if (!navigator.geolocation) {
@@ -137,23 +244,12 @@ export default function RiderHome() {
     setGpsStatus("loading")
     setLocationName("Fetching your location…")
 
-    const onSuccess = (pos) => {
-      if (cancelled) return
-      const lat = pos.coords.latitude
-      const lng = pos.coords.longitude
-      setLiveGps([lat, lng])
-      // Only set pin on first GPS fix — never overwrite a user-chosen pin
-      setPinCoords(prev => prev ?? [lat, lng])
-      if (!prev) applyPin(lat, lng)
-    }
-
-    // Simplified: just call applyPin once on first success
     const onFirstSuccess = (pos) => {
       if (cancelled) return
       const lat = pos.coords.latitude
       const lng = pos.coords.longitude
       setLiveGps([lat, lng])
-      applyPin(lat, lng)  // sets pinCoords + label on first load only
+      applyPin(lat, lng)
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -168,14 +264,9 @@ export default function RiderHome() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     )
 
-    // Continuous watch — ONLY updates liveGps for map dot, NEVER touches pinCoords
     try {
       watchIdRef.current = navigator.geolocation.watchPosition(
-        (pos) => {
-          if (cancelled) return
-          setLiveGps([pos.coords.latitude, pos.coords.longitude])
-          // ← intentionally NOT calling applyPin here
-        },
+        (pos) => { if (!cancelled) setLiveGps([pos.coords.latitude, pos.coords.longitude]) },
         () => {},
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       )
@@ -187,7 +278,6 @@ export default function RiderHome() {
     }
   }, [applyPin])
 
-  // ── Autocomplete ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isUserTyping.current) return
     if (debTimer.current) clearTimeout(debTimer.current)
@@ -211,12 +301,10 @@ export default function RiderHome() {
     return () => document.removeEventListener("mousedown", handler)
   }, [])
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
   const selectSuggestion = (item) => {
     isUserTyping.current = false
     setLocationName(item.short || item.label.split(",")[0])
-    setPinCoords([item.lat, item.lng])  // ← sets pin only, not liveGps
+    setPinCoords([item.lat, item.lng])
     setSuggestions([])
     setShowDrop(false)
     setLocError(false)
@@ -236,7 +324,6 @@ export default function RiderHome() {
     )
   }
 
-  // Map pin click — sets pinCoords + label, DOES NOT touch liveGps
   const handleMapPick = async ([lat, lng]) => {
     setPinCoords([lat, lng])
     setLocationName("Getting address…")
@@ -264,8 +351,8 @@ export default function RiderHome() {
     setShowPopup(false)
     navigate("/rider-searching", {
       state: {
-        userLocation:     pinCoords,       // ← pinned location, not live GPS
-        liveGpsLocation:  liveGps,         // ← actual GPS (for rider's current position)
+        userLocation:     pinCoords,
+        liveGpsLocation:  liveGps,
         collegeLocation:  collegeCoords,
         departureTime:    formatTime(departureTime),
         departureTimeRaw: departureTime,
@@ -273,45 +360,50 @@ export default function RiderHome() {
     })
   }
 
-  // Map shows pin marker (pinCoords) and centers on it initially
   const mapCenter = pinCoords || liveGps
 
+  // ────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-100 pb-24">
+    <div className="min-h-screen bg-gray-100 pb-20">
 
-      <div className="flex items-center justify-between px-4 pt-4">
-        <button className="text-2xl leading-none">☰</button>
-        <h1 className="text-lg font-semibold">Welcome, Rider !</h1>
-        <div className="w-9 h-9 bg-teal-400 rounded-full" />
-      </div>
+      {/* ── TOP HEADER ── */}
+      <div className="flex items-center justify-between px-4 pt-5 pb-3 bg-white shadow-sm">
+        <h1 className="text-lg font-bold text-gray-900">
+          Welcome, <span className="text-teal-600">{firstName}</span>!
+        </h1>
 
-      {/* MAP */}
-      <div className="mt-4 mx-4 rounded-3xl overflow-hidden shadow-sm relative" style={{ height: 220 }}>
-        {/* Hint overlay */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[999] bg-black/60 text-white text-xs px-3 py-1 rounded-full pointer-events-none">
-          📍 Tap map to set pickup point
+        {/* Profile avatar + dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setShowDropdown(v => !v)}
+            className="focus:outline-none"
+          >
+            <Avatar name={fullName || firstName} />
+          </button>
+
+          {showDropdown && (
+            <div className="absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+              <button
+                onClick={() => { setShowDropdown(false); setTab("account") }}
+                className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition"
+              >
+                <span>👤</span> View Profile
+              </button>
+              <div className="border-t border-gray-100" />
+              <button
+                onClick={handleLogout}
+                className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition"
+              >
+                <span>🚪</span> Logout
+              </button>
+            </div>
+          )}
         </div>
-        {mapCenter ? (
-          <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
-            dragging zoomControl scrollWheelZoom doubleClickZoom>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
-            {/* Pinned pickup marker */}
-            {pinCoords && <Marker position={pinCoords} />}
-            {/* Center map on pin (only moves when pin changes, not on GPS watch) */}
-            <RecenterMap position={pinCoords} />
-            <MapClickHandler onPick={handleMapPick} />
-          </MapContainer>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center bg-slate-100 text-gray-400 text-sm gap-2">
-            <span className="text-3xl animate-bounce">📍</span>
-            {gpsStatus === "loading" && <span>Fetching your location…</span>}
-            {gpsStatus === "error"   && <span>Tap "Use current location" or type below</span>}
-          </div>
-        )}
       </div>
 
-      {/* CONFIRMATION POPUP */}
+      {/* ── CONFIRMATION POPUP ── */}
       {showPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
@@ -332,93 +424,310 @@ export default function RiderHome() {
         </div>
       )}
 
-      {/* POST RIDE CARD */}
-      <div className="px-4 mt-5">
-        <h2 className="font-semibold mb-3">Post a Ride</h2>
-        <div className="p-5 rounded-2xl space-y-4 text-white" style={{ backgroundColor: "rgba(0,0,0,0.85)" }}>
-
-          <div>
-            <label className="text-sm opacity-80 block mb-1">Current Location</label>
-            <div className="relative" ref={dropRef}>
-              <input type="text" value={locationName}
-                onChange={(e) => {
-                  isUserTyping.current = true
-                  setLocationName(e.target.value)
-                  setLocError(false)
-                }}
-                onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
-                placeholder="Type an address or tap the map…"
-                className={`w-full p-3 rounded-lg text-black bg-white text-sm border
-                  ${locError ? "border-red-500 ring-1 ring-red-400" : "border-transparent"}
-                  focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
-              />
-              {loadingSugg && (
-                <span className="absolute right-3 top-3.5 text-gray-400 text-base animate-spin select-none">⟳</span>
-              )}
-              {showDrop && suggestions.length > 0 && (
-                <ul className="absolute z-50 left-0 right-0 mt-1 bg-white text-black border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
-                  {suggestions.map((s, i) => (
-                    <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
-                      <button type="button" onMouseDown={() => selectSuggestion(s)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
-                        <span className="block font-medium text-sm">{s.short}</span>
-                        <span className="block text-xs text-gray-400 truncate">{s.label}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+      {/* ══════════════════ HOME TAB ══════════════════ */}
+      {tab === "home" && (
+        <div>
+          {/* MAP */}
+          <div className="mt-4 mx-4 rounded-3xl overflow-hidden shadow-sm relative" style={{ height: 220, zIndex: 10 }}>
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[999] bg-black/60 text-white text-xs px-3 py-1 rounded-full pointer-events-none">
+              📍 Tap map to set pickup point
             </div>
-            <button type="button" onClick={useCurrentLocation}
-              className="mt-2 text-xs text-teal-400 hover:text-teal-200 hover:underline transition">
-              📍 Use current location
-            </button>
-            {locError && <p className="text-red-400 text-xs mt-1">⚠ Could not determine your location.</p>}
+            {mapCenter ? (
+              <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
+                dragging zoomControl scrollWheelZoom doubleClickZoom>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+                {pinCoords && <Marker position={pinCoords} />}
+                <RecenterMap position={pinCoords} />
+                <MapClickHandler onPick={handleMapPick} />
+              </MapContainer>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center bg-slate-100 text-gray-400 text-sm gap-2">
+                <span className="text-3xl animate-bounce">📍</span>
+                {gpsStatus === "loading" && <span>Fetching your location…</span>}
+                {gpsStatus === "error"   && <span>Tap "Use current location" or type below</span>}
+              </div>
+            )}
           </div>
 
-          <div>
-            <label className="text-sm opacity-80 block mb-1">Destination</label>
-            <input value={collegeName} readOnly
-              className="w-full p-3 rounded-lg text-black bg-white text-sm cursor-default" />
+          {/* POST RIDE CARD */}
+          <div className="px-4 mt-5">
+            <h2 className="font-semibold mb-3">Post a Ride</h2>
+            <div className="p-5 rounded-2xl space-y-4 text-white" style={{ backgroundColor: "rgba(0,0,0,0.85)" }}>
+
+              <div>
+                <label className="text-sm opacity-80 block mb-1">Current Location</label>
+                <div className="relative" ref={dropRef}>
+                  <input type="text" value={locationName}
+                    onChange={(e) => {
+                      isUserTyping.current = true
+                      setLocationName(e.target.value)
+                      setLocError(false)
+                    }}
+                    onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
+                    placeholder="Type an address or tap the map…"
+                    className={`w-full p-3 rounded-lg text-black bg-white text-sm border
+                      ${locError ? "border-red-500 ring-1 ring-red-400" : "border-transparent"}
+                      focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
+                  />
+                  {loadingSugg && (
+                    <span className="absolute right-3 top-3.5 text-gray-400 text-base animate-spin select-none">⟳</span>
+                  )}
+                  {showDrop && suggestions.length > 0 && (
+                    <ul className="absolute z-50 left-0 right-0 mt-1 bg-white text-black border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+                      {suggestions.map((s, i) => (
+                        <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
+                          <button type="button" onMouseDown={() => selectSuggestion(s)}
+                            className="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
+                            <span className="block font-medium text-sm">{s.short}</span>
+                            <span className="block text-xs text-gray-400 truncate">{s.label}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button type="button" onClick={useCurrentLocation}
+                  className="mt-2 text-xs text-teal-400 hover:text-teal-200 hover:underline transition">
+                  📍 Use current location
+                </button>
+                {locError && <p className="text-red-400 text-xs mt-1">⚠ Could not determine your location.</p>}
+              </div>
+
+              <div>
+                <label className="text-sm opacity-80 block mb-1">Destination</label>
+                <input value={collegeName} readOnly
+                  className="w-full p-3 rounded-lg text-black bg-white text-sm cursor-default" />
+              </div>
+
+              <div>
+                <label className="text-sm opacity-80 block mb-1">Departure Time</label>
+                <input type="time" value={departureTime} min={getMinTime()}
+                  onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
+                  className={`w-full p-3 rounded-lg text-black bg-white text-sm border
+                    ${timeError ? "border-red-500 ring-1 ring-red-400" : "border-transparent"}
+                    focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
+                />
+                {timeError && <p className="text-red-400 text-xs mt-1">⚠ Please select a valid future departure time.</p>}
+              </div>
+
+              <button onClick={handleSearch}
+                className="w-full mt-2 bg-gray-200 hover:bg-gray-300 active:scale-95 text-black font-medium py-3 rounded-xl transition">
+                Search for Passenger
+              </button>
+
+              <button className="mt-2 bg-gray-200 hover:bg-gray-300 text-black px-4 py-2 rounded-lg text-sm transition">
+                Saved Rides
+              </button>
+            </div>
           </div>
-
-          <div>
-            <label className="text-sm opacity-80 block mb-1">Departure Time</label>
-            <input type="time" value={departureTime} min={getMinTime()}
-              onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
-              className={`w-full p-3 rounded-lg text-black bg-white text-sm border
-                ${timeError ? "border-red-500 ring-1 ring-red-400" : "border-transparent"}
-                focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
-            />
-            {timeError && <p className="text-red-400 text-xs mt-1">⚠ Please select a valid future departure time.</p>}
-          </div>
-
-          <button onClick={handleSearch}
-            className="w-full mt-2 bg-gray-200 hover:bg-gray-300 active:scale-95 text-black font-medium py-3 rounded-xl transition">
-            Search for Passenger
-          </button>
-
-          <button className="mt-2 bg-gray-200 hover:bg-gray-300 text-black px-4 py-2 rounded-lg text-sm transition">
-            Saved Rides
-          </button>
         </div>
+      )}
+
+      {/* ══════════════════ HISTORY TAB ══════════════════ */}
+      {tab === "history" && (
+        <div className="px-4 pt-5">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Ride History</h2>
+
+          {historyLoad && (
+            <div className="flex justify-center py-16">
+              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {historyErr && (
+            <div className="text-center py-16 text-red-500 text-sm">{historyErr}</div>
+          )}
+
+          {!historyLoad && !historyErr && history.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <span className="text-5xl mb-3">🚗</span>
+              <p className="text-sm font-medium">No rides yet</p>
+              <p className="text-xs mt-1">Your completed rides will appear here</p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {history.map((ride, i) => (
+              <div key={ride._id || i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium">{formatDate(ride.createdAt || ride.date)}</p>
+                    <p className="text-xs text-gray-400">{ride.departureTime || ""}</p>
+                  </div>
+                  <StatusBadge status={ride.status} />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Pickup</p>
+                      <p className="text-sm font-medium text-gray-800">{ride.pickupLocation || ride.userLocation || "—"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 rounded-full bg-gray-400 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Destination</p>
+                      <p className="text-sm font-medium text-gray-800">{ride.destination || collegeName}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {ride.fare != null && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Fare Earned</span>
+                    <span className="text-sm font-bold text-teal-600">₹{ride.fare}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ ACCOUNT TAB ══════════════════ */}
+      {tab === "account" && (
+        <div className="px-4 pt-5 pb-8">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Account</h2>
+
+          {profileLoad ? (
+            <div className="flex justify-center py-16">
+              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+
+              {/* Profile card */}
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                <div className="flex items-center gap-4 mb-4">
+                  <Avatar name={fullName || firstName} size="lg" />
+                  <div>
+                    <p className="font-bold text-gray-900 text-base">{fullName || firstName}</p>
+                    <p className="text-xs text-teal-600 font-medium mt-0.5">Rider</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <InfoRow icon="🎓" label="University ID" value={profile?.universityId || "—"} />
+                  <InfoRow icon="📧" label="Email" value={profile?.email || "—"} />
+                  <InfoRow icon="📱" label="Phone" value={profile?.phone || storedUser?.phone || "—"} />
+                  <InfoRow icon="⚥"  label="Gender" value={profile?.gender || "—"} />
+                </div>
+              </div>
+
+              {/* Ride stats */}
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                <p className="text-sm font-bold text-gray-700 mb-3">Ride Statistics</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <StatBox label="Total Rides"    value={profile?.totalRides    ?? history.length ?? "—"} />
+                  <StatBox label="Total Earnings" value={profile?.totalEarnings ? `₹${profile.totalEarnings}` : "—"} />
+                  <StatBox label="Rating"         value={profile?.rating        ? `${profile.rating} ⭐` : "—"} />
+                </div>
+              </div>
+
+              {/* Edit email */}
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                <p className="text-sm font-bold text-gray-700 mb-3">Edit Profile</p>
+
+                {editMode ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1">New Email</label>
+                      <input
+                        type="email"
+                        value={editEmail}
+                        onChange={e => setEditEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        className="w-full bg-gray-100 p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    {editMsg && (
+                      <p className={`text-xs ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>
+                        {editMsg}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setEditMode(false); setEditMsg("") }}
+                        className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleEditSave}
+                        disabled={editLoading}
+                        className="flex-1 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition"
+                      >
+                        {editLoading ? "Saving…" : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setEditMode(true); setEditEmail(profile?.email || "") }}
+                    className="w-full py-2.5 rounded-xl border border-teal-500 text-teal-600 text-sm font-medium hover:bg-teal-50 transition"
+                  >
+                    ✏️ Edit Email
+                  </button>
+                )}
+              </div>
+
+              {/* Logout */}
+              <button
+                onClick={handleLogout}
+                className="w-full py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 font-semibold text-sm hover:bg-red-100 transition"
+              >
+                🚪 Logout
+              </button>
+
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── BOTTOM NAV ── */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">
+        <NavTab icon="🏠" label="Home"    active={tab === "home"}    onClick={() => setTab("home")} />
+        <NavTab icon="📋" label="History" active={tab === "history"} onClick={() => setTab("history")} />
+        <NavTab icon="👤" label="Account" active={tab === "account"} onClick={() => setTab("account")} />
       </div>
+    </div>
+  )
+}
 
-      {/* BOTTOM NAV */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around py-3 z-40">
-        <div className="text-center">
-          <img src={homeIcon} className="w-6 mx-auto mb-1" alt="Home" />
-          <div className="text-sm font-medium">Home</div>
-        </div>
-        <div className="text-center text-gray-400">
-          <img src={exploreIcon} className="w-6 mx-auto mb-1 opacity-60" alt="History" />
-          <div className="text-sm">History</div>
-        </div>
-        <div className="text-center text-gray-400">
-          <img src={profileIcon} className="w-6 mx-auto mb-1 opacity-60" alt="Account" />
-          <div className="text-sm">Account</div>
-        </div>
+// ── Small reusable components ─────────────────────────────────────────────────
+
+function NavTab({ icon, label, active, onClick }) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center gap-0.5 px-4">
+      <span className={`text-xl transition-transform ${active ? "scale-110" : "opacity-40"}`}>{icon}</span>
+      <span className={`text-xs font-medium transition-colors ${active ? "text-teal-600" : "text-gray-400"}`}>
+        {label}
+      </span>
+      {active && <div className="w-1 h-1 rounded-full bg-teal-500 mt-0.5" />}
+    </button>
+  )
+}
+
+function InfoRow({ icon, label, value }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-base w-5 text-center">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</p>
+        <p className="text-sm font-medium text-gray-800 truncate">{value}</p>
       </div>
+    </div>
+  )
+}
+
+function StatBox({ label, value }) {
+  return (
+    <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+      <p className="text-base font-bold text-gray-900">{value}</p>
+      <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{label}</p>
     </div>
   )
 }

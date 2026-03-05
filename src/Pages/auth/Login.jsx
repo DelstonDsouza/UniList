@@ -5,13 +5,106 @@ import { useNavigate } from "react-router-dom"
 import { auth } from "../../config/firebase"
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth"
 import { apiFetch, setToken } from "../../services/api"
+import { X } from "lucide-react"
+
+const terms = [
+  {
+    title: "1. Acceptance of Terms",
+    body: "By accessing or using the UniLift platform, users agree to comply with and be bound by these Terms and Conditions. UniLift is a ride-sharing platform designed specifically for students within the same college community.",
+  },
+  {
+    title: "2. Eligibility",
+    body: "UniLift is intended only for registered students of the participating college. Users must register using valid university credentials or student identification. Unauthorized users are not permitted to access or use the platform.",
+  },
+  {
+    title: "3. User Responsibilities",
+    body: "Users must provide accurate and up-to-date information during registration. Both riders and passengers must behave respectfully and responsibly while using the platform. Any misuse, harassment, or inappropriate behavior may lead to suspension or termination of the user account.",
+  },
+  {
+    title: "4. Ride Sharing Rules",
+    body: "Riders must ensure that their vehicle is in good condition and safe to use. Passengers should be present at the pickup location at the agreed time. Both parties should verify ride details before starting the journey.",
+  },
+  {
+    title: "5. Safety and Conduct",
+    body: "All users must follow traffic rules and safety regulations during the ride. Riders are responsible for safe driving practices, and passengers must follow the rider's safety instructions. Any dangerous or illegal behavior is strictly prohibited.",
+  },
+  {
+    title: "6. Payment and Fare",
+    body: "Fare details will be displayed before the ride begins. Passengers must pay the agreed fare upon completion of the ride using the available payment method on the platform.",
+  },
+  {
+    title: "7. Privacy and Data Usage",
+    body: "UniLift respects user privacy. Personal information such as names, phone numbers, and location details will only be used for ride coordination and platform functionality. User data will not be shared with unauthorized third parties.",
+  },
+  {
+    title: "8. Limitation of Liability",
+    body: "UniLift acts only as a platform that connects riders and passengers within the college community. The platform is not responsible for any accidents, injuries, damages, or disputes that may occur during rides.",
+  },
+  {
+    title: "9. Account Suspension or Termination",
+    body: "UniLift reserves the right to suspend or terminate any account that violates these Terms and Conditions, engages in misuse of the platform, or causes harm to other users.",
+  },
+  {
+    title: "10. Changes to Terms",
+    body: "UniLift may update or modify these Terms and Conditions at any time. Continued use of the platform after changes are made indicates acceptance of the revised terms.",
+  },
+  {
+    title: "11. Contact and Support",
+    body: "For any questions, concerns, or support regarding the UniLift platform, users may contact the system administrators or project team.",
+  },
+]
+
+function TermsModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4">
+      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
+
+        {/* Modal Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Terms & Conditions</h2>
+            <p className="text-xs text-gray-400 mt-0.5">UniLift Student Ride Sharing</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+          >
+            <X size={16} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="overflow-y-auto px-6 py-4 space-y-5 flex-1">
+          {terms.map((section, i) => (
+            <div key={i}>
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">{section.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{section.body}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100">
+          <button
+            onClick={onClose}
+            className="w-full bg-black text-white py-3 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors"
+          >
+            I Understand
+          </button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
 
 export default function Login() {
-  const [step,    setStep]    = useState(1)
-  const [phone,   setPhone]   = useState("")
-  const [otp,     setOtp]     = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState("")
+  const [step,      setStep]      = useState(1)
+  const [phone,     setPhone]     = useState("")
+  const [otp,       setOtp]       = useState("")
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState("")
+  const [showTerms, setShowTerms] = useState(false)
   const navigate = useNavigate()
 
   const setupRecaptcha = () => {
@@ -53,30 +146,23 @@ export default function Login() {
     try {
       setLoading(true)
 
-      // 1. Verify OTP with Firebase
-      const result      = await window.confirmationResult.confirm(otp)
+      const result       = await window.confirmationResult.confirm(otp)
       const firebaseUser = result.user
+      const idToken      = await firebaseUser.getIdToken()
 
-      // 2. Get Firebase ID token
-      const idToken = await firebaseUser.getIdToken()
-
-      // 3. Exchange for backend JWT
       const data = await apiFetch("/auth/firebase", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ idToken }),
       })
 
-      // 4. Save JWT
       setToken(data.token)
 
-      // 5. Save basic user info
       localStorage.setItem("user", JSON.stringify({
         uid:   data.userId,
         phone: firebaseUser.phoneNumber,
       }))
 
-      // 6. Navigate based on profile completeness
       if (!data.profileComplete) {
         navigate("/register-details")
       } else if (!data.roleSelected) {
@@ -97,6 +183,9 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-gray-100 px-6 pt-6 flex flex-col justify-between">
+
+      {/* T&C Modal */}
+      {showTerms && <TermsModal onClose={() => setShowTerms(false)} />}
 
       {/* Header */}
       <div>
@@ -149,9 +238,21 @@ export default function Login() {
 
       {/* Footer */}
       <div className="pb-6">
-        <p className="text-center text-sm text-gray-500 mb-4">
-          By clicking Continue, you agree to our <b>T&Cs</b>
+        <p className="text-center text-sm text-gray-500 mb-3">
+          New user?{" "}
+          <a href="/register" className="text-black font-semibold underline">Register here</a>
         </p>
+
+        <p className="text-center text-sm text-gray-500 mb-4">
+          By clicking Continue, you agree to our{" "}
+          <button
+            onClick={() => setShowTerms(true)}
+            className="font-bold text-black underline"
+          >
+            T&Cs
+          </button>
+        </p>
+
         {step === 1 && (
           <button
             onClick={sendOtp}
