@@ -125,7 +125,7 @@ function Avatar({ name, size = "md" }) {
 // ────────────────────────────────────────────────────────────────────────────
 export default function RiderHome() {
   const navigate   = useNavigate()
-  const [tab, setTab] = useState("home") // "home" | "history" | "account"
+  const [tab, setTab] = useState("home")
 
   // ── User info ─────────────────────────────────────────────────────────────
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}")
@@ -363,39 +363,29 @@ export default function RiderHome() {
   const mapCenter = pinCoords || liveGps
 
   // ────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-100 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20">
 
       {/* ── TOP HEADER ── */}
       <div className="flex items-center justify-between px-4 pt-5 pb-3 bg-white shadow-sm">
-        <h1 className="text-lg font-bold text-gray-900">
-          Welcome, <span className="text-teal-600">{firstName}</span>!
-        </h1>
-
-        {/* Profile avatar + dropdown */}
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">
+            Welcome, <span className="text-teal-600">{firstName}</span>!
+          </h1>
+        </div>
         <div className="relative" ref={dropdownRef}>
-          <button
-            onClick={() => setShowDropdown(v => !v)}
-            className="focus:outline-none"
-          >
+          <button onClick={() => setShowDropdown(v => !v)} className="focus:outline-none">
             <Avatar name={fullName || firstName} />
           </button>
-
           {showDropdown && (
             <div className="absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-              <button
-                onClick={() => { setShowDropdown(false); setTab("account") }}
-                className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition"
-              >
+              <button onClick={() => { setShowDropdown(false); setTab("account") }}
+                className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition">
                 <span>👤</span> View Profile
               </button>
               <div className="border-t border-gray-100" />
-              <button
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition"
-              >
+              <button onClick={handleLogout}
+                className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition">
                 <span>🚪</span> Logout
               </button>
             </div>
@@ -407,16 +397,26 @@ export default function RiderHome() {
       {showPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
-            <h2 className="text-lg font-semibold mb-1">Confirm Ride Post</h2>
-            <p className="text-sm text-gray-500 mb-1">From: <strong>{locationName}</strong></p>
-            <p className="text-sm text-gray-500 mb-4">Departure: <strong>{formatTime(departureTime)}</strong></p>
+            
+            <h2 className="text-lg font-bold text-center text-gray-900 mb-1">Confirm Ride Post</h2>
+            <p className="text-sm text-center text-gray-400 mb-4">Ready to find passengers?</p>
+            <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-teal-500">📍</span>
+                <span className="text-gray-700 font-medium truncate">{locationName}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-teal-500">🕐</span>
+                <span className="text-gray-700 font-medium">{formatTime(departureTime)}</span>
+              </div>
+            </div>
             <div className="flex gap-3">
               <button onClick={() => setShowPopup(false)}
-                className="flex-1 py-2 rounded-xl border border-gray-300 text-gray-600 hover:bg-gray-50 transition">
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
                 Cancel
               </button>
               <button onClick={handleConfirm}
-                className="flex-1 py-2 rounded-xl bg-teal-500 text-white font-medium hover:bg-teal-600 transition">
+                className="flex-1 py-2.5 rounded-xl bg-teal-500 text-white text-sm font-semibold hover:bg-teal-600 transition">
                 Confirm
               </button>
             </div>
@@ -426,11 +426,12 @@ export default function RiderHome() {
 
       {/* ══════════════════ HOME TAB ══════════════════ */}
       {tab === "home" && (
-        <div>
+        <div className="px-4 pt-4 space-y-4">
+
           {/* MAP */}
-          <div className="mt-4 mx-4 rounded-3xl overflow-hidden shadow-sm relative" style={{ height: 220, zIndex: 10 }}>
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[999] bg-black/60 text-white text-xs px-3 py-1 rounded-full pointer-events-none">
-              📍 Tap map to set pickup point
+          <div className="rounded-3xl overflow-hidden shadow-sm relative" style={{ height: 220, zIndex: 10 }}>
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[999] bg-black/60 text-white text-xs px-3 py-1.5 rounded-full pointer-events-none flex items-center gap-1.5">
+              <span>📍</span> Tap map to set pickup point
             </div>
             {mapCenter ? (
               <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
@@ -449,37 +450,32 @@ export default function RiderHome() {
               </div>
             )}
           </div>
+{/* POST RIDE CARD */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 px-5 py-5 space-y-3">
 
-          {/* POST RIDE CARD */}
-          <div className="px-4 mt-5">
-            <h2 className="font-semibold mb-3">Post a Ride</h2>
-            <div className="p-5 rounded-2xl space-y-4 text-white" style={{ backgroundColor: "rgba(0,0,0,0.85)" }}>
+            <h2 className="text-base font-bold text-gray-900">Post a Ride</h2>
 
-              <div>
-                <label className="text-sm opacity-80 block mb-1">Current Location</label>
-                <div className="relative" ref={dropRef}>
+            {/* Route block — From / To stacked */}
+            <div className="relative bg-gray-50 rounded-2xl border border-gray-100">
+
+              {/* FROM */}
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="w-3 h-3 rounded-full border-2 border-teal-500 bg-white flex-shrink-0" />
+                <div className="flex-1 relative" ref={dropRef}>
                   <input type="text" value={locationName}
-                    onChange={(e) => {
-                      isUserTyping.current = true
-                      setLocationName(e.target.value)
-                      setLocError(false)
-                    }}
+                    onChange={(e) => { isUserTyping.current = true; setLocationName(e.target.value); setLocError(false) }}
                     onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
-                    placeholder="Type an address or tap the map…"
-                    className={`w-full p-3 rounded-lg text-black bg-white text-sm border
-                      ${locError ? "border-red-500 ring-1 ring-red-400" : "border-transparent"}
-                      focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
+                    placeholder="Your pickup location…"
+                    className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
                   />
-                  {loadingSugg && (
-                    <span className="absolute right-3 top-3.5 text-gray-400 text-base animate-spin select-none">⟳</span>
-                  )}
+                  {loadingSugg && <span className="absolute right-0 top-0 text-gray-400 animate-spin">⟳</span>}
                   {showDrop && suggestions.length > 0 && (
-                    <ul className="absolute z-50 left-0 right-0 mt-1 bg-white text-black border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+                    <ul className="absolute z-50 left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
                       {suggestions.map((s, i) => (
                         <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
                           <button type="button" onMouseDown={() => selectSuggestion(s)}
                             className="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
-                            <span className="block font-medium text-sm">{s.short}</span>
+                            <span className="block font-medium text-sm text-gray-800">{s.short}</span>
                             <span className="block text-xs text-gray-400 truncate">{s.label}</span>
                           </button>
                         </li>
@@ -487,39 +483,52 @@ export default function RiderHome() {
                     </ul>
                   )}
                 </div>
-                <button type="button" onClick={useCurrentLocation}
-                  className="mt-2 text-xs text-teal-400 hover:text-teal-200 hover:underline transition">
-                  📍 Use current location
+                <button type="button" onClick={useCurrentLocation} title="Use current location"
+                  className="text-teal-500 hover:text-teal-700 flex-shrink-0 transition">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <circle cx="12" cy="12" r="3"/><path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
+                  </svg>
                 </button>
-                {locError && <p className="text-red-400 text-xs mt-1">⚠ Could not determine your location.</p>}
               </div>
 
-              <div>
-                <label className="text-sm opacity-80 block mb-1">Destination</label>
-                <input value={collegeName} readOnly
-                  className="w-full p-3 rounded-lg text-black bg-white text-sm cursor-default" />
+              {/* Divider with dashed line */}
+              <div className="flex items-center gap-3 px-4">
+                <div className="w-3 flex justify-center">
+                  <div className="w-px h-4 border-l-2 border-dashed border-gray-300" />
+                </div>
+                <div className="flex-1 border-t border-dashed border-gray-200" />
               </div>
 
-              <div>
-                <label className="text-sm opacity-80 block mb-1">Departure Time</label>
-                <input type="time" value={departureTime} min={getMinTime()}
-                  onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
-                  className={`w-full p-3 rounded-lg text-black bg-white text-sm border
-                    ${timeError ? "border-red-500 ring-1 ring-red-400" : "border-transparent"}
-                    focus:outline-none focus:ring-2 focus:ring-teal-400 transition`}
-                />
-                {timeError && <p className="text-red-400 text-xs mt-1">⚠ Please select a valid future departure time.</p>}
+              {/* TO */}
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="w-3 h-3 rounded-sm bg-red-400 flex-shrink-0" />
+                <p className="text-sm text-gray-500 font-medium flex-1">{collegeName}</p>
               </div>
+            </div>
 
+            {locError && <p className="text-red-500 text-xs">⚠ Could not determine your location.</p>}
+
+            {/* Departure time */}
+            <div className="flex items-center gap-3 bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3.5">
+              <span className="text-gray-400">🕐</span>
+              <input type="time" value={departureTime} min={getMinTime()}
+                onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
+                className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none"
+              />
+            </div>
+            {timeError && <p className="text-red-500 text-xs">⚠ Please select a valid future departure time.</p>}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
               <button onClick={handleSearch}
-                className="w-full mt-2 bg-gray-200 hover:bg-gray-300 active:scale-95 text-black font-medium py-3 rounded-xl transition">
+                className="flex-1 py-3 rounded-xl bg-gray-900 hover:bg-gray-700 active:scale-95 text-white text-sm font-semibold transition">
                 Search for Passenger
               </button>
-
-              <button className="mt-2 bg-gray-200 hover:bg-gray-300 text-black px-4 py-2 rounded-lg text-sm transition">
-                Saved Rides
+              <button className="px-4 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition whitespace-nowrap">
+                Saved
               </button>
             </div>
+
           </div>
         </div>
       )}
@@ -534,11 +543,7 @@ export default function RiderHome() {
               <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
-
-          {historyErr && (
-            <div className="text-center py-16 text-red-500 text-sm">{historyErr}</div>
-          )}
-
+          {historyErr && <div className="text-center py-16 text-red-500 text-sm">{historyErr}</div>}
           {!historyLoad && !historyErr && history.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-gray-400">
               <span className="text-5xl mb-3">🚗</span>
@@ -557,7 +562,6 @@ export default function RiderHome() {
                   </div>
                   <StatusBadge status={ride.status} />
                 </div>
-
                 <div className="space-y-2">
                   <div className="flex items-start gap-2">
                     <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
@@ -574,7 +578,6 @@ export default function RiderHome() {
                     </div>
                   </div>
                 </div>
-
                 {ride.fare != null && (
                   <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
                     <span className="text-xs text-gray-500">Fare Earned</span>
@@ -598,8 +601,6 @@ export default function RiderHome() {
             </div>
           ) : (
             <div className="space-y-4">
-
-              {/* Profile card */}
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                 <div className="flex items-center gap-4 mb-4">
                   <Avatar name={fullName || firstName} size="lg" />
@@ -608,16 +609,14 @@ export default function RiderHome() {
                     <p className="text-xs text-teal-600 font-medium mt-0.5">Rider</p>
                   </div>
                 </div>
-
                 <div className="space-y-3">
                   <InfoRow icon="🎓" label="University ID" value={profile?.universityId || "—"} />
-                  <InfoRow icon="📧" label="Email" value={profile?.email || "—"} />
-                  <InfoRow icon="📱" label="Phone" value={profile?.phone || storedUser?.phone || "—"} />
-                  <InfoRow icon="⚥"  label="Gender" value={profile?.gender || "—"} />
+                  <InfoRow icon="📧" label="Email"         value={profile?.email || "—"} />
+                  <InfoRow icon="📱" label="Phone"         value={profile?.phone || storedUser?.phone || "—"} />
+                  <InfoRow icon="⚥"  label="Gender"        value={profile?.gender || "—"} />
                 </div>
               </div>
 
-              {/* Ride stats */}
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                 <p className="text-sm font-bold text-gray-700 mb-3">Ride Statistics</p>
                 <div className="grid grid-cols-3 gap-3">
@@ -627,61 +626,42 @@ export default function RiderHome() {
                 </div>
               </div>
 
-              {/* Edit email */}
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                 <p className="text-sm font-bold text-gray-700 mb-3">Edit Profile</p>
-
                 {editMode ? (
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs text-gray-500 block mb-1">New Email</label>
-                      <input
-                        type="email"
-                        value={editEmail}
-                        onChange={e => setEditEmail(e.target.value)}
+                      <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)}
                         placeholder="your@email.com"
-                        className="w-full bg-gray-100 p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      />
+                        className="w-full bg-gray-100 p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                     </div>
                     {editMsg && (
-                      <p className={`text-xs ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>
-                        {editMsg}
-                      </p>
+                      <p className={`text-xs ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>{editMsg}</p>
                     )}
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => { setEditMode(false); setEditMsg("") }}
-                        className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition"
-                      >
+                      <button onClick={() => { setEditMode(false); setEditMsg("") }}
+                        className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
                         Cancel
                       </button>
-                      <button
-                        onClick={handleEditSave}
-                        disabled={editLoading}
-                        className="flex-1 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition"
-                      >
+                      <button onClick={handleEditSave} disabled={editLoading}
+                        className="flex-1 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition">
                         {editLoading ? "Saving…" : "Save"}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => { setEditMode(true); setEditEmail(profile?.email || "") }}
-                    className="w-full py-2.5 rounded-xl border border-teal-500 text-teal-600 text-sm font-medium hover:bg-teal-50 transition"
-                  >
+                  <button onClick={() => { setEditMode(true); setEditEmail(profile?.email || "") }}
+                    className="w-full py-2.5 rounded-xl border border-teal-500 text-teal-600 text-sm font-medium hover:bg-teal-50 transition">
                     ✏️ Edit Email
                   </button>
                 )}
               </div>
 
-              {/* Logout */}
-              <button
-                onClick={handleLogout}
-                className="w-full py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 font-semibold text-sm hover:bg-red-100 transition"
-              >
+              <button onClick={handleLogout}
+                className="w-full py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 font-semibold text-sm hover:bg-red-100 transition">
                 🚪 Logout
               </button>
-
             </div>
           )}
         </div>

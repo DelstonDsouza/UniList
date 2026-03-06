@@ -15,19 +15,6 @@ L.Icon.Default.mergeOptions({
 
 const COLLEGE = [12.872109642876621, 74.84534749009204]
 
-function calcEta(fromLat, fromLng, toLat, toLng) {
-  const R    = 6371
-  const dLat = ((toLat - fromLat) * Math.PI) / 180
-  const dLng = ((toLng - fromLng) * Math.PI) / 180
-  const a    =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((fromLat * Math.PI) / 180) *
-    Math.cos((toLat   * Math.PI) / 180) *
-    Math.sin(dLng / 2) ** 2
-  const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return { distKm: Number(distKm.toFixed(1)), etaMin: Math.round((distKm / 32) * 60) }
-}
-
 function PinLayer({ position, color, emoji, label }) {
   const map = useMap()
   useEffect(() => {
@@ -196,6 +183,7 @@ export default function ActiveRidePanel() {
   const destPin    = isOngoing ? COLLEGE : passengerPos
   const routeColor = isOngoing ? "#16a34a" : "#2563EB"
 
+  // ── Socket: join room + live rider location ───────────────────────────────
   useEffect(() => {
     if (!activeRide?._id) return
     socket.emit("join:passenger", activeRide._id)
@@ -204,19 +192,24 @@ export default function ActiveRidePanel() {
     return () => socket.off("rider:location", handle)
   }, [activeRide?._id])
 
+  // ── Seed riderPos from last known location in ride doc ────────────────────
   useEffect(() => {
     const lat = activeRide?.currentLocation?.coordinates?.[1]
     const lng = activeRide?.currentLocation?.coordinates?.[0]
     if (lat && lng && !riderPos) setRiderPos([lat, lng])
   }, [activeRide]) // eslint-disable-line
 
+  // ── Fetch OSRM route + use OSRM duration for ETA ─────────────────────────
+  // This matches the rider side which also uses OSRM duration, not haversine
   useEffect(() => {
     if (!riderPos) return
     const dest = isOngoing ? COLLEGE : passengerPos
     if (!dest) return
+
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
+
     fetch(
       `https://router.project-osrm.org/route/v1/driving/` +
       `${riderPos[1]},${riderPos[0]};${dest[1]},${dest[0]}` +
@@ -226,25 +219,29 @@ export default function ActiveRidePanel() {
       .then(r => r.json())
       .then(data => {
         const route = data?.routes?.[0]
-        if (route) setRouteCoords(route.geometry.coordinates.map(([lng, lat]) => [lat, lng]))
+        if (!route) return
+
+        // Polyline
+        setRouteCoords(route.geometry.coordinates.map(([lng, lat]) => [lat, lng]))
+
+        // ✅ OSRM duration in seconds → round to minutes (same source as rider side)
+        const durationMin = Math.round(route.duration / 60)
+        const distKm      = Number((route.distance / 1000).toFixed(1))
+
+        if (isWaiting) {
+          setEtaToMe(durationMin)
+          setEtaToDest(null)
+          setDistToDest(null)
+        } else if (isOngoing) {
+          setEtaToDest(durationMin)
+          setDistToDest(distKm)
+          setEtaToMe(null)
+        }
       })
       .catch(e => { if (e.name !== "AbortError") console.warn("OSRM:", e) })
-    return () => ctrl.abort()
-  }, [riderPos?.[0], riderPos?.[1], isOngoing, passengerPos?.[0], passengerPos?.[1]]) // eslint-disable-line
 
-  useEffect(() => {
-    if (!riderPos) return
-    if (isWaiting && passengerPos) {
-      const { etaMin } = calcEta(riderPos[0], riderPos[1], passengerPos[0], passengerPos[1])
-      setEtaToMe(etaMin)
-      setEtaToDest(null)
-    } else if (isOngoing) {
-      const { distKm, etaMin } = calcEta(riderPos[0], riderPos[1], COLLEGE[0], COLLEGE[1])
-      setEtaToDest(etaMin)
-      setDistToDest(distKm)
-      setEtaToMe(null)
-    }
-  }, [riderPos, passengerPos, isWaiting, isOngoing]) // eslint-disable-line
+    return () => ctrl.abort()
+  }, [riderPos?.[0], riderPos?.[1], isOngoing, isWaiting, passengerPos?.[0], passengerPos?.[1]]) // eslint-disable-line
 
   if (!activeRide) return null
 

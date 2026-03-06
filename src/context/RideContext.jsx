@@ -55,8 +55,12 @@ export function RideProvider({ children }) {
   }, [])
 
   // ── Map DB ride status → viewState ────────────────────────────────────────
+  //  "locked"         → "confirmed"   UpcomingRide (waiting for rider to start)
+  //  "pickup_started" → "waiting"     ActiveRidePanel (rider on the way + OTP)
+  //  "ongoing"        → "ongoing"     ActiveRidePanel (ride in progress)
+  //  "completed"      → "completed"   RideComplete
   function statusToView(status) {
-    if (status === "locked")         return "waiting"
+    if (status === "locked")         return "confirmed"
     if (status === "pickup_started") return "waiting"
     if (status === "ongoing")        return "ongoing"
     if (status === "completed")      return "completed"
@@ -80,7 +84,6 @@ export function RideProvider({ children }) {
   }, [])
 
   // ── Fetch nearby riders ───────────────────────────────────────────────────
-  // ✅ Always uses the coords passed in — never falls back to GPS silently
   const fetchRiders = useCallback(async (loc) => {
     if (!loc) return
     if (!getToken()) return
@@ -125,7 +128,6 @@ export function RideProvider({ children }) {
         Math.cos((riderLat * Math.PI) / 180) *
         Math.sin(dLng / 2) ** 2
       const distKm = 2 * R * Math.asin(Math.sqrt(a))
-      // Add tentatively — PassengerDashboard will re-fetch with correct location
       if (distKm <= 5) {
         setNearbyRiders(prev =>
           prev.find(r => r._id === ride._id) ? prev : [ride, ...prev]
@@ -165,9 +167,6 @@ export function RideProvider({ children }) {
       disconnectSocket(true)
     }
   }, [fetchRiders])
-
-  // ── NO auto-poll here — PassengerDashboard drives fetchRiders ────────────
-  // This prevents the GPS-only fetch that ignored the map-selected location
 
   // ── Join active ride socket room ──────────────────────────────────────────
   useEffect(() => {
@@ -215,7 +214,7 @@ export function RideProvider({ children }) {
       if (!ride) throw new Error("Unexpected server response")
       setActiveRide(ride)
       setFareInfo(ride.fare)
-      setViewState("fare_reveal")
+      setViewState("confirmed")   // ✅ skip fare_reveal — go straight to UpcomingRide
       setNearbyRiders(prev => prev.filter(r => r._id !== rideId))
       return ride
     } finally {
@@ -223,7 +222,7 @@ export function RideProvider({ children }) {
     }
   }
 
-  const acknowledgeFare  = () => setViewState("waiting")
+  const acknowledgeFare  = () => setViewState("confirmed")  // kept for safety, unused now
   const resetToDiscovery = () => {
     setActiveRide(null); setFareInfo(null)
     setViewState("discovery")
@@ -244,7 +243,7 @@ export function RideProvider({ children }) {
       userLocation, locationError,
       activeRide, fareInfo, requestingRideId,
       requestRide, acknowledgeFare, resetToDiscovery,
-      fetchRiders,  // ✅ exposed so PassengerDashboard can call with correct location
+      fetchRiders,
     }}>
       {children}
     </RideContext.Provider>

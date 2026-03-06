@@ -11,7 +11,6 @@ import { auth } from "../../config/firebase"
 
 import { useRide } from "../../context/RideContext"
 import { apiFetch } from "../../services/api"
-import FareRevealSheet from "./FareRevealSheet"
 import ActiveRidePanel from "./ActiveRidePanel"
 import UpcomingRide    from "./UpcomingRide"
 import RideComplete    from "./RideComplete"
