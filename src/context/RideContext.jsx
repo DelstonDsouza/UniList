@@ -12,8 +12,8 @@ function mergeRiders(prev, next) {
     const old = prev[i]
     return (
       old &&
-      old._id         === newRide._id &&
-      old.status      === newRide.status &&
+      old._id === newRide._id &&
+      old.status === newRide.status &&
       old.distToRoute === newRide.distToRoute
     )
   })
@@ -21,23 +21,25 @@ function mergeRiders(prev, next) {
 }
 
 export function RideProvider({ children }) {
-  const [viewState,        setViewState]        = useState("discovery")
-  const [nearbyRiders,     setNearbyRiders]     = useState([])
-  const [loadingRiders,    setLoadingRiders]    = useState(false)
-  const [userLocation,     setUserLocation]     = useState(null)
-  const [locationError,    setLocationError]    = useState(null)
-  const [activeRide,       setActiveRide]       = useState(null)
-  const [fareInfo,         setFareInfo]         = useState(null)
+  const [viewState, setViewState] = useState("discovery")
+  const [nearbyRiders, setNearbyRiders] = useState([])
+  const [loadingRiders, setLoadingRiders] = useState(false)
+  const [userLocation, setUserLocation] = useState(null)
+  const [locationError, setLocationError] = useState(null)
+  const [activeRide, setActiveRide] = useState(null)
+  const [fareInfo, setFareInfo] = useState(null)
   const [requestingRideId, setRequestingRideId] = useState(null)
-  const [restoringRide,    setRestoringRide]    = useState(true)
+  const [restoringRide, setRestoringRide] = useState(true)
+  const [reachedData, setReachedData] = useState(null)  // {rideId, distanceKm, fare}
+  const [completedData, setCompletedData] = useState(null)  // {rideId, distanceKm, fare}
 
   const userLocationRef = useRef(null)
-  const activeRideRef   = useRef(null)
-  const viewStateRef    = useRef("discovery")
-  const fetchingRef     = useRef(false)
+  const activeRideRef = useRef(null)
+  const viewStateRef = useRef("discovery")
+  const fetchingRef = useRef(false)
 
   useEffect(() => { activeRideRef.current = activeRide }, [activeRide])
-  useEffect(() => { viewStateRef.current  = viewState  }, [viewState])
+  useEffect(() => { viewStateRef.current = viewState }, [viewState])
 
   // ── GPS ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -60,10 +62,10 @@ export function RideProvider({ children }) {
   //  "ongoing"        → "ongoing"     ActiveRidePanel (ride in progress)
   //  "completed"      → "completed"   RideComplete
   function statusToView(status) {
-    if (status === "locked")         return "confirmed"
+    if (status === "locked") return "confirmed"
     if (status === "pickup_started") return "waiting"
-    if (status === "ongoing")        return "ongoing"
-    if (status === "completed")      return "completed"
+    if (status === "ongoing") return "ongoing"
+    if (status === "completed") return "completed"
     return null
   }
 
@@ -79,7 +81,7 @@ export function RideProvider({ children }) {
         const vs = statusToView(ride.status)
         if (vs) setViewState(vs)
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setRestoringRide(false))
   }, [])
 
@@ -92,7 +94,7 @@ export function RideProvider({ children }) {
     setLoadingRiders(true)
     try {
       const [lat, lng] = loc
-      const data  = await apiFetch(`/rides/nearby?lat=${lat}&lng=${lng}`)
+      const data = await apiFetch(`/rides/nearby?lat=${lat}&lng=${lng}`)
       const fresh = data?.rides || data?.data?.rides || []
       setNearbyRiders(prev => mergeRiders(prev, fresh))
     } catch {
@@ -119,23 +121,22 @@ export function RideProvider({ children }) {
       const riderLat = ride.currentLocation?.coordinates?.[1]
       const riderLng = ride.currentLocation?.coordinates?.[0]
       if (!riderLat || !riderLng) return
-      const R    = 6371
+      const R = 6371
       const dLat = ((riderLat - loc[0]) * Math.PI) / 180
       const dLng = ((riderLng - loc[1]) * Math.PI) / 180
-      const a    =
+      const a =
         Math.sin(dLat / 2) ** 2 +
         Math.cos((loc[0] * Math.PI) / 180) *
         Math.cos((riderLat * Math.PI) / 180) *
         Math.sin(dLng / 2) ** 2
       const distKm = 2 * R * Math.asin(Math.sqrt(a))
       if (distKm <= 5) {
-        setNearbyRiders(prev =>
-          prev.find(r => r._id === ride._id) ? prev : [ride, ...prev]
-        )
+        // Fetch fresh list from API so locationName/pickupArea are properly computed
+        fetchRiders(loc)
       }
     }
 
-    const handleRideRemoved   = ({ rideId }) =>
+    const handleRideRemoved = ({ rideId }) =>
       setNearbyRiders(prev => prev.filter(r => r._id !== rideId))
 
     const handleRideCancelled = () => {
@@ -143,27 +144,30 @@ export function RideProvider({ children }) {
     }
 
     const handlePickupStarted = () => setViewState("waiting")
-    const handleRideStarted   = () => setViewState("ongoing")
-    const handleRideCompleted = () => setViewState("completed")
+    const handleRideStarted = () => setViewState("ongoing")
+    const handleReachedDest = (data) => setReachedData(data)
+    const handleRideCompleted = (data) => { setCompletedData(data); setReachedData(null); setViewState("completed") }
 
-    socket.on("ride:new",            handleNewRide)
-    socket.on("ride:removed",        handleRideRemoved)
-    socket.on("ride:locked",         handleRideRemoved)
-    socket.on("ride:cancelled",      handleRideCancelled)
+    socket.on("ride:new", handleNewRide)
+    socket.on("ride:removed", handleRideRemoved)
+    socket.on("ride:locked", handleRideRemoved)
+    socket.on("ride:cancelled", handleRideCancelled)
     socket.on("ride:pickup_started", handlePickupStarted)
-    socket.on("ride:started",        handleRideStarted)
-    socket.on("ride:completed",      handleRideCompleted)
+    socket.on("ride:started", handleRideStarted)
+    socket.on("ride:reached_destination", handleReachedDest)
+    socket.on("ride:completed", handleRideCompleted)
 
     return () => {
       clearTimeout(joinTimer)
-      socket.off("connect",             joinRoom)
-      socket.off("ride:new",            handleNewRide)
-      socket.off("ride:removed",        handleRideRemoved)
-      socket.off("ride:locked",         handleRideRemoved)
-      socket.off("ride:cancelled",      handleRideCancelled)
+      socket.off("connect", joinRoom)
+      socket.off("ride:new", handleNewRide)
+      socket.off("ride:removed", handleRideRemoved)
+      socket.off("ride:locked", handleRideRemoved)
+      socket.off("ride:cancelled", handleRideCancelled)
       socket.off("ride:pickup_started", handlePickupStarted)
-      socket.off("ride:started",        handleRideStarted)
-      socket.off("ride:completed",      handleRideCompleted)
+      socket.off("ride:started", handleRideStarted)
+      socket.off("ride:reached_destination", handleReachedDest)
+      socket.off("ride:completed", handleRideCompleted)
       disconnectSocket(true)
     }
   }, [fetchRiders])
@@ -181,7 +185,7 @@ export function RideProvider({ children }) {
       try {
         const data = await apiFetch("/rides/active")
         const ride = data?.ride || data?.data?.ride
-        const vs   = viewStateRef.current
+        const vs = viewStateRef.current
         if (!ride) {
           if (vs !== "discovery") { setViewState("discovery"); setActiveRide(null) }
           return
@@ -206,9 +210,9 @@ export function RideProvider({ children }) {
     try {
       const [lat, lng] = location
       const data = await apiFetch(`/rides/${rideId}/request`, {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ passengerLat: lat, passengerLng: lng, name: passengerName, phone: passengerPhone }),
+        body: JSON.stringify({ passengerLat: lat, passengerLng: lng, name: passengerName, phone: passengerPhone }),
       })
       const ride = data?.ride || data?.data?.ride
       if (!ride) throw new Error("Unexpected server response")
@@ -222,7 +226,7 @@ export function RideProvider({ children }) {
     }
   }
 
-  const acknowledgeFare  = () => setViewState("confirmed")  // kept for safety, unused now
+  const acknowledgeFare = () => setViewState("confirmed")  // kept for safety, unused now
   const resetToDiscovery = () => {
     setActiveRide(null); setFareInfo(null)
     setViewState("discovery")
@@ -242,6 +246,9 @@ export function RideProvider({ children }) {
       viewState, nearbyRiders, loadingRiders,
       userLocation, locationError,
       activeRide, fareInfo, requestingRideId,
+      reachedData, completedData,
+      setReachedData, setCompletedData,
+      setViewState,
       requestRide, acknowledgeFare, resetToDiscovery,
       fetchRiders,
     }}>

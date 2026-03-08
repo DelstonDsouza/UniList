@@ -8,27 +8,32 @@ const UserSchema = new mongoose.Schema(
     firebaseUid: { type: String, required: true, unique: true },
 
     // Profile
-    firstName:    { type: String, default: "", trim: true },
-    lastName:     { type: String, default: "", trim: true },
-    phone:        { type: String, default: "", trim: true },
-    email:        { type: String, default: "", lowercase: true, trim: true },
-    gender:       { type: String, enum: ["Male", "Female", "Other", ""], default: "" },
+    firstName: { type: String, default: "", trim: true },
+    lastName: { type: String, default: "", trim: true },
+    phone: { type: String, default: "", trim: true },
+    email: { type: String, default: "", lowercase: true, trim: true },
+    gender: { type: String, enum: ["Male", "Female", "Other", ""], default: "" },
     universityId: { type: String, default: "", trim: true },
 
     // Role
-    role:    { type: String, enum: ["student", "admin"], default: "student" },
+    role: { type: String, enum: ["student", "admin"], default: "student" },
     isRider: { type: Boolean, default: false },
 
     // Active ride tracking
     activeRideId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref:  "Ride",
+      ref: "Ride",
       default: null,
     },
 
-    // Ratings
-    ratingSum:   { type: Number, default: 0 },
+    // Ratings (as rider)
+    ratingSum: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },
+
+    // Ratings (as passenger)
+    passengerRatingSum: { type: Number, default: 0 },
+    passengerRatingCount: { type: Number, default: 0 },
+
   },
   { timestamps: true }
 )

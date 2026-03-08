@@ -11,8 +11,8 @@ import { apiFetch } from "../../services/api"
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
 const pickupIcon = new L.DivIcon({
@@ -33,7 +33,7 @@ const collegeIcon = new L.DivIcon({
 
 // ── Fetches OSRM route and draws blue polyline ────────────────────────────────
 function RoutePolyline({ from, to }) {
-  const map    = useMap()
+  const map = useMap()
   const [coords, setCoords] = useState([])
 
   useEffect(() => {
@@ -46,10 +46,10 @@ function RoutePolyline({ from, to }) {
           .map(([lng, lat]) => [lat, lng])
         setCoords(decoded)
         if (decoded.length > 1) {
-          try { map.fitBounds(L.latLngBounds(decoded), { padding: [60, 60] }) } catch {}
+          try { map.fitBounds(L.latLngBounds(decoded), { padding: [60, 60] }) } catch { }
         }
       })
-      .catch(() => {})
+      .catch(() => { })
   }, [from, to, map])
 
   if (coords.length < 2) return null
@@ -62,24 +62,62 @@ function RoutePolyline({ from, to }) {
 }
 
 export default function RiderWait() {
-  const { id }   = useParams()
+  const { id } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
 
   const { userLocation, collegeLocation, departureTime, departureTimeRaw } = location.state || {}
 
-  const [dots,            setDots]            = useState("")
+  const [dots, setDots] = useState("")
   const [passengerJoined, setPassengerJoined] = useState(false)
   const [showCancelPopup, setShowCancelPopup] = useState(false)
+  const [showNoPassenger, setShowNoPassenger] = useState(false)  // fires when departure time passes
 
-  const navigatedRef    = useRef(false)
-  const watchIdRef      = useRef(null)
+  const navigatedRef = useRef(false)
+  const watchIdRef = useRef(null)
   const locationEmitRef = useRef(null)
 
   useEffect(() => {
     const t = setInterval(() => setDots(p => p.length >= 3 ? "" : p + "."), 500)
     return () => clearInterval(t)
   }, [])
+
+  // ── Departure time countdown: when it hits 0, show "No passengers found" popup ──
+  useEffect(() => {
+    if (!departureTime && !departureTimeRaw) return
+    const raw = departureTimeRaw || departureTime
+
+    // Parse "8:35 AM" or "08:35"
+    const parse = (str) => {
+      const ampm = str.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+      const h24 = str.trim().match(/^(\d{1,2}):(\d{2})$/)
+      let h, m
+      if (ampm) {
+        h = parseInt(ampm[1]); m = parseInt(ampm[2])
+        const p = ampm[3].toUpperCase()
+        if (p === "PM" && h !== 12) h += 12
+        if (p === "AM" && h === 12) h = 0
+      } else if (h24) {
+        h = parseInt(h24[1]); m = parseInt(h24[2])
+      } else return null
+      const d = new Date(); d.setHours(h, m, 0, 0)
+      return d
+    }
+
+    const target = parse(raw)
+    if (!target) return
+
+    const tick = () => {
+      const diff = Math.round((target - Date.now()) / 1000)
+      if (diff <= 0 && !passengerJoined && !navigatedRef.current) {
+        setShowNoPassenger(true)
+        clearInterval(id)
+      }
+    }
+    const id = setInterval(tick, 1000)
+    tick() // run immediately too
+    return () => clearInterval(id)
+  }, [departureTime, departureTimeRaw, passengerJoined])
 
   // ── Socket: join room + listen for passenger accepting ────────────────────
   useEffect(() => {
@@ -94,17 +132,17 @@ export default function RiderWait() {
       setTimeout(() => {
         navigate("/ride-confirmed", {
           state: {
-            rideId:         data.rideId,
+            rideId: data.rideId,
             userLocation,
             collegeLocation,
             departureTime,
             departureTimeRaw,
-            passengerName:  data.passengerName,
+            passengerName: data.passengerName,
             passengerPhone: data.passengerPhone,
-            passengerLat:   data.passengerLat,
-            passengerLng:   data.passengerLng,
-            fare:           data.fare,
-            distanceKm:     data.distanceKm,
+            passengerLat: data.passengerLat,
+            passengerLng: data.passengerLng,
+            fare: data.fare,
+            distanceKm: data.distanceKm,
           },
         })
       }, 1200)
@@ -119,8 +157,8 @@ export default function RiderWait() {
     if (!id || !navigator.geolocation) return
 
     watchIdRef.current = navigator.geolocation.watchPosition(
-      () => {},
-      () => {},
+      () => { },
+      () => { },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
     )
 
@@ -130,11 +168,11 @@ export default function RiderWait() {
         (pos) => {
           socket.emit("rider:location", {
             rideId: id,
-            lat:    pos.coords.latitude,
-            lng:    pos.coords.longitude,
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
           })
         },
-        () => {},
+        () => { },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 3000 }
       )
     }, 4000)
@@ -145,11 +183,37 @@ export default function RiderWait() {
     }
   }, [id])
 
-  const pickupCoords  = userLocation    || [12.9141, 74.8560]
+  const pickupCoords = userLocation || [12.9141, 74.8560]
   const collegeCoords = collegeLocation || [12.8721, 74.8453]
 
   return (
     <div className="fixed inset-0 bg-white overflow-hidden">
+
+      {/* NO PASSENGERS FOUND POPUP */}
+      {showNoPassenger && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl text-center w-[88%] max-w-sm">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">No Passengers Found</h2>
+            <p className="text-gray-500 text-sm mb-6">
+              Departure time expired and no one joined the ride.
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  await apiFetch(`/rides/${id}/cancel`, { method: "POST" })
+                } catch { }
+                clearInterval(locationEmitRef.current)
+                navigator.geolocation.clearWatch(watchIdRef.current)
+                disconnectSocket(true)
+                navigate("/rider-home", { replace: true })
+              }}
+              className="w-full py-3 rounded-2xl bg-gray-900 text-white font-semibold text-base hover:bg-gray-700 transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* CANCEL POPUP */}
       {showCancelPopup && (

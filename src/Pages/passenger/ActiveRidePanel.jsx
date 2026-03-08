@@ -1,16 +1,18 @@
 // src/pages/passenger/ActiveRidePanel.jsx
 import { useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { MapContainer, TileLayer, Polyline, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useRide } from "../../context/RideContext"
 import { socket } from "../../services/socket"
 
+
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
 const COLLEGE = [12.872109642876621, 74.84534749009204]
@@ -29,9 +31,11 @@ function PinLayer({ position, color, emoji, label }) {
       iconSize: [40, 40], iconAnchor: [20, 40],
     })
     const m = L.marker(position, { icon }).addTo(map)
-    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -44],
-      className: "leaflet-tooltip-custom" })
-    return () => { try { m.remove() } catch {} }
+    if (label) m.bindTooltip(label, {
+      permanent: true, direction: "top", offset: [0, -44],
+      className: "leaflet-tooltip-custom"
+    })
+    return () => { try { m.remove() } catch { } }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
@@ -44,20 +48,20 @@ function AccuracyRing({ position }) {
       radius: 50, color: "#2563EB", fillColor: "#2563EB",
       fillOpacity: 0.10, weight: 1.5, dashArray: "5 5",
     }).addTo(map)
-    return () => { try { c.remove() } catch {} }
+    return () => { try { c.remove() } catch { } }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
 
 function FitRoute({ coords }) {
-  const map  = useMap()
+  const map = useMap()
   const prev = useRef(null)
   useEffect(() => {
     if (!coords || coords.length < 2) return
     const key = `${coords[0]}-${coords[coords.length - 1]}`
     if (prev.current === key) return
     prev.current = key
-    try { map.fitBounds(L.latLngBounds(coords), { padding: [56, 56], animate: true, duration: 1.0 }) } catch {}
+    try { map.fitBounds(L.latLngBounds(coords), { padding: [56, 56], animate: true, duration: 1.0 }) } catch { }
   }, [coords, map])
   return null
 }
@@ -91,8 +95,8 @@ function ReportModal({ onClose }) {
     "Rider was not at pickup on time", "Other issue",
   ]
   const [selected, setSelected] = useState("")
-  const [details,  setDetails]  = useState("")
-  const [sent,     setSent]     = useState(false)
+  const [details, setDetails] = useState("")
+  const [sent, setSent] = useState(false)
 
   if (sent) return (
     <Modal title="Report Submitted" onClose={onClose}>
@@ -140,11 +144,11 @@ function ReportModal({ onClose }) {
 
 function HelpModal({ onClose }) {
   const faqs = [
-    { q: "How do I pay?",                     a: "Pay cash directly to the rider when you arrive. ₹5/km, minimum ₹25." },
-    { q: "Can I cancel my ride?",              a: "Rides cannot be cancelled once confirmed. Contact the rider directly if needed." },
+    { q: "How do I pay?", a: "Pay cash directly to the rider when you arrive. ₹5/km, minimum ₹25." },
+    { q: "Can I cancel my ride?", a: "Rides cannot be cancelled once confirmed. Contact the rider directly if needed." },
     { q: "What if the rider doesn't show up?", a: "Wait 5 minutes then use the Report button to flag the issue." },
-    { q: "What is the OTP for?",               a: "The OTP verifies your identity. Share the 4-digit code when the rider arrives." },
-    { q: "What if I feel unsafe?",             a: "Exit the vehicle and call 112. Then report the issue using the Report button." },
+    { q: "What is the OTP for?", a: "The OTP verifies your identity. Share the 4-digit code when the rider arrives." },
+    { q: "What if I feel unsafe?", a: "Exit the vehicle and call 112. Then report the issue using the Report button." },
   ]
   return (
     <Modal title="❓ Help & FAQ" onClose={onClose}>
@@ -164,32 +168,52 @@ function HelpModal({ onClose }) {
 export default function ActiveRidePanel() {
   const { activeRide, fareInfo, viewState } = useRide()
 
-  const pickupLat    = activeRide?.passenger?.location?.coordinates?.[1]
-  const pickupLng    = activeRide?.passenger?.location?.coordinates?.[0]
+  const pickupLat = activeRide?.passenger?.location?.coordinates?.[1]
+  const pickupLng = activeRide?.passenger?.location?.coordinates?.[0]
   const passengerPos = (pickupLat && pickupLng) ? [pickupLat, pickupLng] : null
 
-  const [riderPos,    setRiderPos]    = useState(null)
+  const [riderPos, setRiderPos] = useState(null)
   const [routeCoords, setRouteCoords] = useState([])
-  const [etaToMe,     setEtaToMe]     = useState(null)
-  const [etaToDest,   setEtaToDest]   = useState(null)
-  const [distToDest,  setDistToDest]  = useState(null)
-  const [showReport,  setShowReport]  = useState(false)
-  const [showHelp,    setShowHelp]    = useState(false)
+  const [etaToMe, setEtaToMe] = useState(null)
+  const [etaToDest, setEtaToDest] = useState(null)
+  const [distToDest, setDistToDest] = useState(null)
+  const [showReport, setShowReport] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const abortRef = useRef(null)
+
+  const navigate = useNavigate()
 
   const isWaiting = viewState === "waiting"
   const isOngoing = viewState === "ongoing"
 
-  const destPin    = isOngoing ? COLLEGE : passengerPos
+  const destPin = isOngoing ? COLLEGE : passengerPos
   const routeColor = isOngoing ? "#16a34a" : "#2563EB"
 
   // ── Socket: join room + live rider location ───────────────────────────────
   useEffect(() => {
     if (!activeRide?._id) return
     socket.emit("join:passenger", activeRide._id)
-    const handle = ({ lat, lng }) => setRiderPos([lat, lng])
-    socket.on("rider:location", handle)
-    return () => socket.off("rider:location", handle)
+    const handleLocation = ({ lat, lng }) => setRiderPos([lat, lng])
+
+    // When rider marks destination reached → go to payment page
+    const handleReached = (data) => {
+      navigate("/passenger-payment", {
+        replace: true,
+        state: {
+          rideId: activeRide._id,
+          distanceKm: data?.distanceKm ?? data?.distance ?? null,
+          fare: data?.fare ?? fareInfo?.amount ?? activeRide?.fare?.amount ?? null,
+          riderName: activeRide.riderName,
+        },
+      })
+    }
+
+    socket.on("rider:location", handleLocation)
+    socket.on("ride:reached_destination", handleReached)
+    return () => {
+      socket.off("rider:location", handleLocation)
+      socket.off("ride:reached_destination", handleReached)
+    }
   }, [activeRide?._id])
 
   // ── Seed riderPos from last known location in ride doc ────────────────────
@@ -226,7 +250,7 @@ export default function ActiveRidePanel() {
 
         // ✅ OSRM duration in seconds → round to minutes (same source as rider side)
         const durationMin = Math.round(route.duration / 60)
-        const distKm      = Number((route.distance / 1000).toFixed(1))
+        const distKm = Number((route.distance / 1000).toFixed(1))
 
         if (isWaiting) {
           setEtaToMe(durationMin)
@@ -245,16 +269,17 @@ export default function ActiveRidePanel() {
 
   if (!activeRide) return null
 
-  const mapCenter  = riderPos || passengerPos || COLLEGE
-  const otp        = activeRide.otp || null
-  const fare       = fareInfo?.amount ?? activeRide?.fare?.amount ?? "—"
+  const mapCenter = riderPos || passengerPos || COLLEGE
+  const otp = activeRide.otp || null
+  const fare = fareInfo?.amount ?? activeRide?.fare?.amount ?? "—"
   const etaDisplay = isOngoing ? etaToDest : etaToMe
-  const etaLabel   = isOngoing ? "ETA TO COLLEGE" : "RIDER ARRIVES IN"
+  const etaLabel = isOngoing ? "REACHING COLLEGE IN " : "RIDER ARRIVES IN"
 
   return (
     <>
       {showReport && <ReportModal onClose={() => setShowReport(false)} />}
-      {showHelp   && <HelpModal  onClose={() => setShowHelp(false)} />}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+
 
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
 
@@ -284,16 +309,6 @@ export default function ActiveRidePanel() {
             )}
           </MapContainer>
 
-          <div style={{
-            position: "absolute", top: 14, left: 14, zIndex: 500,
-            background: isOngoing ? "#16a34a" : "#2563EB",
-            color: "white", borderRadius: 999, padding: "7px 16px",
-            fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.20)",
-          }}>
-            {isOngoing ? "🎓 RIDE IN PROGRESS" : "🛵 RIDER IS COMING"}
-          </div>
-
           <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
             <button onClick={() => setShowHelp(true)} style={{
               padding: "7px 12px", borderRadius: 20, border: "none",
@@ -318,8 +333,10 @@ export default function ActiveRidePanel() {
           <div style={{ width: 40, height: 4, background: "#e2e8f0", borderRadius: 99, margin: "0 auto 4px" }} />
 
           <div>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
-              color: isOngoing ? "#16a34a" : "#2563EB" }}>
+            <p style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
+              color: isOngoing ? "#16a34a" : "#2563EB"
+            }}>
               {isOngoing ? "RIDE IN PROGRESS" : "Pickup Passenger"}
             </p>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>
@@ -333,8 +350,10 @@ export default function ActiveRidePanel() {
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <div>
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600,
-                letterSpacing: "0.08em", margin: "0 0 2px" }}>{etaLabel}</p>
+              <p style={{
+                fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600,
+                letterSpacing: "0.08em", margin: "0 0 2px"
+              }}>{etaLabel}</p>
               <p style={{ fontSize: 48, fontWeight: 900, color: "white", margin: 0, lineHeight: 1 }}>
                 {etaDisplay != null ? etaDisplay : "—"}
                 <span style={{ fontSize: 16, fontWeight: 600, marginLeft: 6, color: "rgba(255,255,255,0.6)" }}>
@@ -349,7 +368,7 @@ export default function ActiveRidePanel() {
                 </p>
               )}
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", margin: 0 }}>
-                {riderPos ? "📡 Live" : "Waiting…"}
+                {riderPos ? "" : "Waiting…"}
               </p>
             </div>
           </div>
@@ -429,10 +448,6 @@ export default function ActiveRidePanel() {
               color: "#475569", fontSize: 13, fontWeight: 700, cursor: "pointer",
             }}>❓ Help</button>
           </div>
-
-          <p style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", margin: 0 }}>
-            Live tracking via socket · Ride cannot be cancelled
-          </p>
         </div>
       </div>
     </>

@@ -12,24 +12,23 @@ import { auth } from "../../config/firebase"
 import { useRide } from "../../context/RideContext"
 import { apiFetch } from "../../services/api"
 import ActiveRidePanel from "./ActiveRidePanel"
-import UpcomingRide    from "./UpcomingRide"
-import RideComplete    from "./RideComplete"
+import UpcomingRide from "./UpcomingRide"
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-const NOMINATIM   = "/nominatim"
+const NOMINATIM = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
 
 function distKm(lat1, lng1, lat2, lng2) {
-  const R    = 6371
+  const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
   const dLng = ((lng2 - lng1) * Math.PI) / 180
-  const a    =
+  const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
     Math.cos((lat2 * Math.PI) / 180) *
@@ -38,20 +37,20 @@ function distKm(lat1, lng1, lat2, lng2) {
 }
 
 const extractShortName = (data) => {
-  const a    = data.address || {}
+  const a = data.address || {}
   const road = a.road || ""
   const area = a.neighbourhood || a.suburb || ""
   const city = a.city || a.town || a.village || a.county || ""
   if (road && area && city) return `${road}, ${area}, ${city}`
-  if (road && city)         return `${road}, ${city}`
-  if (area && city)         return `${area}, ${city}`
-  if (city)                 return city
+  if (road && city) return `${road}, ${city}`
+  if (area && city) return `${area}, ${city}`
+  if (city) return city
   return data.display_name?.split(",").slice(0, 3).join(",").trim() ?? "Selected Location"
 }
 
 const reverseGeocode = async (lat, lng) => {
   try {
-    const res  = await fetch(`${NOMINATIM}/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: NOM_HEADERS })
+    const res = await fetch(`${NOMINATIM}/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: NOM_HEADERS })
     const data = await res.json()
     return extractShortName(data)
   } catch {
@@ -61,7 +60,7 @@ const reverseGeocode = async (lat, lng) => {
 
 const searchPlaces = async (query) => {
   try {
-    const res  = await fetch(
+    const res = await fetch(
       `${NOMINATIM}/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&limit=6`,
       { headers: NOM_HEADERS }
     )
@@ -69,8 +68,8 @@ const searchPlaces = async (query) => {
     return (Array.isArray(data) ? data : []).map((x) => ({
       label: x.display_name,
       short: extractShortName(x),
-      lat:   parseFloat(x.lat),
-      lng:   parseFloat(x.lon),
+      lat: parseFloat(x.lat),
+      lng: parseFloat(x.lon),
     }))
   } catch {
     return []
@@ -78,13 +77,19 @@ const searchPlaces = async (query) => {
 }
 
 function RecenterMap({ position }) {
-  const map  = useMap()
+  const map = useMap()
   const prev = useRef(null)
+  const isFirst = useRef(true)
   useEffect(() => {
     if (!position) return
     if (prev.current?.[0] === position[0] && prev.current?.[1] === position[1]) return
     prev.current = position
-    map.flyTo(position, 15, { animate: true, duration: 1.0 })
+    if (isFirst.current) {
+      isFirst.current = false
+      map.setView(position, 15, { animate: false })
+    } else {
+      map.flyTo(position, 15, { animate: true, duration: 0.8 })
+    }
   }, [position, map])
   return null
 }
@@ -124,8 +129,8 @@ function Avatar({ name, size = "sm" }) {
 function StatusBadge({ status }) {
   const map = {
     completed: { bg: "bg-green-100", text: "text-green-700", label: "Completed" },
-    cancelled: { bg: "bg-red-100",   text: "text-red-600",   label: "Cancelled" },
-    active:    { bg: "bg-blue-100",  text: "text-blue-700",  label: "Active"    },
+    cancelled: { bg: "bg-red-100", text: "text-red-600", label: "Cancelled" },
+    active: { bg: "bg-blue-100", text: "text-blue-700", label: "Active" },
   }
   const s = map[status?.toLowerCase()] || { bg: "bg-gray-100", text: "text-gray-600", label: status }
   return (
@@ -169,7 +174,7 @@ function NavTab({ icon, label, active, onClick }) {
 function BottomNav({ tab, setTab }) {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">
-      <NavTab icon="🏠" label="Home"    active={tab === "home"}    onClick={() => setTab("home")} />
+      <NavTab icon="🏠" label="Home" active={tab === "home"} onClick={() => setTab("home")} />
       <NavTab icon="📋" label="History" active={tab === "history"} onClick={() => setTab("history")} />
       <NavTab icon="👤" label="Account" active={tab === "account"} onClick={() => setTab("account")} />
     </div>
@@ -255,9 +260,9 @@ function BeARiderModal({ onClose, onSubmit, loading }) {
 
 function calcPickupTime(departureTimeStr, etaMinutes) {
   if (!departureTimeStr) return null
-  const str   = departureTimeStr.trim()
-  const ampm  = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
-  const h24   = str.match(/^(\d{1,2}):(\d{2})$/)
+  const str = departureTimeStr.trim()
+  const ampm = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  const h24 = str.match(/^(\d{1,2}):(\d{2})$/)
   let hours, minutes
   if (ampm) {
     hours = parseInt(ampm[1]); minutes = parseInt(ampm[2])
@@ -273,6 +278,46 @@ function calcPickupTime(departureTimeStr, etaMinutes) {
   const period = h >= 12 ? "PM" : "AM"
   const dh = h % 12 === 0 ? 12 : h % 12
   return `${dh}:${String(m).padStart(2, "0")} ${period}`
+}
+
+// ─── Countdown hook ──────────────────────────────────────────────────────────
+// Parses "8:35 AM" or "08:35" and returns seconds until that time today
+function useCountdown(departureTimeStr) {
+  const [secsLeft, setSecsLeft] = useState(null)
+
+  useEffect(() => {
+    if (!departureTimeStr) return
+
+    const parse = (str) => {
+      const ampm = str.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+      const h24 = str.trim().match(/^(\d{1,2}):(\d{2})$/)
+      let h, m
+      if (ampm) {
+        h = parseInt(ampm[1]); m = parseInt(ampm[2])
+        const p = ampm[3].toUpperCase()
+        if (p === "PM" && h !== 12) h += 12
+        if (p === "AM" && h === 12) h = 0
+      } else if (h24) {
+        h = parseInt(h24[1]); m = parseInt(h24[2])
+      } else return null
+      const d = new Date()
+      d.setHours(h, m, 0, 0)
+      return d
+    }
+
+    const target = parse(departureTimeStr)
+    if (!target) return
+
+    const tick = () => {
+      const diff = Math.round((target - Date.now()) / 1000)
+      setSecsLeft(diff)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [departureTimeStr])
+
+  return secsLeft
 }
 
 function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerProfile }) {
@@ -292,10 +337,36 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
 
   const handleConfirm = () => {
     if (!passengerProfile) { toast.error("Profile not loaded yet."); return }
-    const name  = `${passengerProfile.firstName} ${passengerProfile.lastName}`.trim()
+    const name = `${passengerProfile.firstName} ${passengerProfile.lastName}`.trim()
     const phone = passengerProfile.phone || ""
     if (!name) { toast.error("Complete your profile before requesting a ride"); return }
     onRequest(ride._id, name, phone)
+  }
+
+  const secsLeft = useCountdown(ride.departureTime)
+
+  // Countdown label
+  let countdownLabel = ""
+  if (secsLeft !== null) {
+    const minsLeft = secsLeft / 60
+    if (secsLeft <= 0) {
+      countdownLabel = "Now!"
+    } else if (minsLeft < 60) {
+      countdownLabel = `${Math.floor(minsLeft)}m ${String(secsLeft % 60).padStart(2, "0")}s`
+    } else {
+      const h = Math.floor(minsLeft / 60)
+      const m = Math.floor(minsLeft % 60)
+      countdownLabel = `${h}h ${m}m`
+    }
+  }
+
+  // Big box background: dark (>10m), amber (5-10m), red (<5m)
+  let boxBg = "bg-gray-900"
+  if (secsLeft !== null) {
+    const minsLeft = secsLeft / 60
+    if (secsLeft <= 0 || minsLeft < 5) boxBg = "bg-red-600"
+    else if (minsLeft < 10) boxBg = "bg-amber-500"
+    // >10 min stays dark gray/black
   }
 
   return (
@@ -305,13 +376,28 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
         <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-lg flex-shrink-0">
           {(ride.riderName || "R")[0].toUpperCase()}
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 flex-1">
           <p className="font-bold text-gray-900 text-lg">{ride.riderName || "—"}</p>
           <Stars rating={rating} />
           <p className="text-sm font-semibold text-gray-900 mt-1">📍 {pickupArea}</p>
-{dist !== null && <p className="text-sm font-semibold text-gray-900">{dist.toFixed(1)} km away</p>}
-{pickupTime && <p className="text-sm font-semibold text-gray-900">🕐 Pickup {pickupTime}</p>}
+          {dist !== null && <p className="text-sm text-gray-700">Distance : <span className="font-semibold text-gray-900">{dist.toFixed(1)} km away</span></p>}
+          {pickupTime && (
+            <p className="text-sm text-gray-700">Pickup Time:  <span className="font-semibold text-gray-900">{pickupTime}</span></p>
+          )}
         </div>
+
+        {/* ── Big countdown box, top-right of card ── */}
+        {secsLeft !== null && (
+          <div className={`flex-shrink-0 flex flex-col items-center justify-center rounded-2xl px-3 py-3 text-white ${boxBg}`}
+            style={{ minWidth: 96 }}>
+            <span className="text-[9px] font-bold uppercase tracking-widest opacity-70 mb-0.5 text-center leading-tight">
+              Ride starts in
+            </span>
+            <span className="text-xl font-extrabold leading-none text-center">
+              {countdownLabel}
+            </span>
+          </div>
+        )}
       </div>
 
       {ride.needsToWalkToRoute && (
@@ -355,40 +441,40 @@ export default function PassengerDashboard() {
   const {
     viewState, nearbyRiders, loadingRiders,
     userLocation, locationError, requestRide, requestingRideId,
-    fetchRiders,  // ✅ pulled from context
+    fetchRiders, resetToDiscovery,
   } = useRide()
 
-  const [navTab,            setNavTab]            = useState("home")
-  const [passengerProfile,  setPassengerProfile]  = useState(null)
+  const [navTab, setNavTab] = useState("home")
+  const [passengerProfile, setPassengerProfile] = useState(null)
   const [passengerLocation, setPassengerLocation] = useState(null)
-  const [locationName,      setLocationName]      = useState("")
-  const [suggestions,       setSuggestions]       = useState([])
-  const [showDrop,          setShowDrop]          = useState(false)
-  const [loadingSugg,       setLoadingSugg]       = useState(false)
-  const [showMapPicker,     setShowMapPicker]     = useState(false)
-  const [search,            setSearch]            = useState("")
-  const [showDropdown,      setShowDropdown]      = useState(false)
-  const [showRiderModal,    setShowRiderModal]    = useState(false)
-  const [riderRegLoading,   setRiderRegLoading]   = useState(false)
-  const [history,           setHistory]           = useState([])
-  const [historyLoad,       setHistoryLoad]       = useState(false)
-  const [historyErr,        setHistoryErr]        = useState("")
-  const [editMode,          setEditMode]          = useState(false)
-  const [editEmail,         setEditEmail]         = useState("")
-  const [editLoading,       setEditLoading]       = useState(false)
-  const [editMsg,           setEditMsg]           = useState("")
+  const [locationName, setLocationName] = useState("")
+  const [suggestions, setSuggestions] = useState([])
+  const [showDrop, setShowDrop] = useState(false)
+  const [loadingSugg, setLoadingSugg] = useState(false)
+  const [showMapPicker, setShowMapPicker] = useState(false)
+  const [search, setSearch] = useState("")
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [showRiderModal, setShowRiderModal] = useState(false)
+  const [riderRegLoading, setRiderRegLoading] = useState(false)
+  const [history, setHistory] = useState([])
+  const [historyLoad, setHistoryLoad] = useState(false)
+  const [historyErr, setHistoryErr] = useState("")
+  const [editMode, setEditMode] = useState(false)
+  const [editEmail, setEditEmail] = useState("")
+  const [editLoading, setEditLoading] = useState(false)
+  const [editMsg, setEditMsg] = useState("")
 
   const isUserTyping = useRef(false)
-  const debTimer     = useRef(null)
-  const dropRef      = useRef(null)
-  const dropdownRef  = useRef(null)
-  const pollRef      = useRef(null)
-  const storedUser   = JSON.parse(localStorage.getItem("user") || "{}")
+  const debTimer = useRef(null)
+  const dropRef = useRef(null)
+  const dropdownRef = useRef(null)
+  const pollRef = useRef(null)
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}")
 
   useEffect(() => {
     apiFetch("/auth/me")
       .then(data => setPassengerProfile(data.user || data))
-      .catch(() => {})
+      .catch(() => { })
   }, [])
 
   useEffect(() => {
@@ -451,7 +537,7 @@ export default function PassengerDashboard() {
   }, [navTab, passengerProfile])
 
   const handleLogout = useCallback(async () => {
-    try { await signOut(auth) } catch {}
+    try { await signOut(auth) } catch { }
     localStorage.clear()
     navigate("/login", { replace: true })
   }, [navigate])
@@ -508,7 +594,7 @@ export default function PassengerDashboard() {
         const name = await reverseGeocode(loc[0], loc[1])
         isUserTyping.current = false; setLocationName(name)
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, timeout: 10000 }
     )
   }
@@ -523,9 +609,32 @@ export default function PassengerDashboard() {
 
   const filtered = search.trim()
     ? nearbyRiders.filter((r) =>
-        [r.locationName, r.pickupArea, r.riderName].join(" ").toLowerCase().includes(search.toLowerCase())
-      )
+      [r.locationName, r.pickupArea, r.riderName].join(" ").toLowerCase().includes(search.toLowerCase())
+    )
     : nearbyRiders
+
+  // Strip rides whose departure time has already passed
+  const parseDepartureSecs = (str) => {
+    if (!str) return null
+    const ampm = str.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+    const h24 = str.trim().match(/^(\d{1,2}):(\d{2})$/)
+    let h, m
+    if (ampm) {
+      h = parseInt(ampm[1]); m = parseInt(ampm[2])
+      const p = ampm[3].toUpperCase()
+      if (p === "PM" && h !== 12) h += 12
+      if (p === "AM" && h === 12) h = 0
+    } else if (h24) {
+      h = parseInt(h24[1]); m = parseInt(h24[2])
+    } else return null
+    const d = new Date(); d.setHours(h, m, 0, 0)
+    return d.getTime()
+  }
+  const activeFiltered = filtered.filter((r) => {
+    const depMs = parseDepartureSecs(r.departureTime)
+    if (!depMs) return true      // no departure time — always show
+    return depMs > Date.now()    // only show if departure is in the future
+  })
 
   const handleRequest = useCallback(async (rideId, name, phone) => {
     try { await requestRide(rideId, name, phone, passengerLocation) }
@@ -533,7 +642,7 @@ export default function PassengerDashboard() {
   }, [requestRide, passengerLocation])
 
   const firstName = passengerProfile?.firstName || storedUser?.firstName || "Passenger"
-  const fullName  = passengerProfile
+  const fullName = passengerProfile
     ? `${passengerProfile.firstName || ""} ${passengerProfile.lastName || ""}`.trim()
     : ""
 
@@ -555,13 +664,8 @@ export default function PassengerDashboard() {
   const mapCenter = passengerLocation || userLocation
 
   // ── View state routing ─────────────────────────────────────────────────────
-  if (viewState === "completed") return (
-    <div className="min-h-screen bg-gray-100 pb-24">
-      <Header {...headerProps} />
-      <RideComplete />
-      <BottomNav tab={navTab} setTab={setNavTab} />
-    </div>
-  )
+  // If completed, immediately reset to discovery (rating was already done on PassengerPayment page)
+  if (viewState === "completed") { resetToDiscovery(); return null }
   if (viewState === "fare_reveal") return (
     <div className="min-h-screen bg-gray-100 pb-24">
       <Header {...headerProps} />
@@ -646,7 +750,7 @@ export default function PassengerDashboard() {
             )}
             {mapCenter ? (
               <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
-                dragging zoomControl scrollWheelZoom={false}>
+                dragging zoomControl scrollWheelZoom doubleClickZoom>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
                 {passengerLocation && <Marker position={passengerLocation} />}
@@ -705,7 +809,7 @@ export default function PassengerDashboard() {
                 </div>
                 {!loadingRiders && (
                   <span className="text-sm font-semibold px-3 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
-                    {filtered.length} found
+                    {activeFiltered.length} found
                   </span>
                 )}
               </div>
@@ -730,7 +834,7 @@ export default function PassengerDashboard() {
               {loadingRiders && [1, 2].map((i) => (
                 <div key={i} className="w-full h-36 rounded-2xl bg-gray-100 animate-pulse" />
               ))}
-              {!loadingRiders && filtered.length === 0 && (
+              {!loadingRiders && activeFiltered.length === 0 && (
                 <div className="py-10 text-center">
                   <div className="text-4xl mb-2">🛵</div>
                   <p className="text-gray-500 text-base font-medium">
@@ -739,7 +843,7 @@ export default function PassengerDashboard() {
                   <p className="text-gray-400 text-sm mt-1">Check back in a few minutes</p>
                 </div>
               )}
-              {!loadingRiders && filtered.map((ride) => (
+              {!loadingRiders && activeFiltered.map((ride) => (
                 <RiderCard
                   key={ride._id}
                   ride={ride}
@@ -777,7 +881,9 @@ export default function PassengerDashboard() {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="text-xs text-gray-400 font-medium">{formatDate(ride.createdAt || ride.date)}</p>
-                    <p className="text-xs text-gray-400">{ride.departureTime || ""}</p>
+                    {ride.riderName && (
+                      <p className="text-sm font-semibold text-gray-800 mt-0.5">🏍 {ride.riderName}</p>
+                    )}
                   </div>
                   <StatusBadge status={ride.status} />
                 </div>
@@ -786,7 +892,7 @@ export default function PassengerDashboard() {
                     <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                     <div>
                       <p className="text-[10px] text-gray-400 uppercase tracking-wide">Pickup</p>
-                      <p className="text-sm font-medium text-gray-800">{ride.pickupLocation || ride.userLocation || "—"}</p>
+                      <p className="text-sm font-medium text-gray-800">{ride.pickupLocation || "—"}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
@@ -797,11 +903,23 @@ export default function PassengerDashboard() {
                     </div>
                   </div>
                 </div>
-                {ride.fare != null && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Fare Paid</span>
-                    <span className="text-sm font-bold text-teal-600">₹{ride.fare}</span>
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {ride.distanceKm != null && (
+                      <span className="text-xs text-gray-500">{ride.distanceKm} km</span>
+                    )}
+                    {ride.passengerReview?.rating && (
+                      <span className="text-xs text-amber-500 font-semibold">
+                        {"⭐".repeat(ride.passengerReview.rating)} Your rating
+                      </span>
+                    )}
                   </div>
+                  {ride.fare != null && (
+                    <span className="text-sm font-bold text-teal-600">₹{ride.fare}</span>
+                  )}
+                </div>
+                {ride.passengerReview?.text && (
+                  <p className="mt-2 text-xs text-gray-400 italic">"{ride.passengerReview.text}"</p>
                 )}
               </div>
             ))}
@@ -824,9 +942,9 @@ export default function PassengerDashboard() {
               </div>
               <div className="space-y-3">
                 <InfoRow icon="🎓" label="University ID" value={passengerProfile?.universityId} />
-                <InfoRow icon="📧" label="Email"         value={passengerProfile?.email} />
-                <InfoRow icon="📱" label="Phone"         value={passengerProfile?.phone || storedUser?.phone} />
-                <InfoRow icon="⚥"  label="Gender"        value={passengerProfile?.gender} />
+                <InfoRow icon="📧" label="Email" value={passengerProfile?.email} />
+                <InfoRow icon="📱" label="Phone" value={passengerProfile?.phone || storedUser?.phone} />
+                <InfoRow icon="⚥" label="Gender" value={passengerProfile?.gender} />
               </div>
             </div>
 
@@ -834,8 +952,8 @@ export default function PassengerDashboard() {
               <p className="text-sm font-bold text-gray-700 mb-3">Ride Statistics</p>
               <div className="grid grid-cols-3 gap-3">
                 <StatBox label="Total Rides" value={passengerProfile?.totalRides ?? history.length ?? "—"} />
-                <StatBox label="Total Spent"  value={passengerProfile?.totalSpent ? `₹${passengerProfile.totalSpent}` : "—"} />
-                <StatBox label="Rating"       value={passengerProfile?.rating ? `${passengerProfile.rating} ⭐` : "—"} />
+                <StatBox label="Total Spent" value={passengerProfile?.totalSpent ? `₹${passengerProfile.totalSpent}` : "—"} />
+                <StatBox label="Rating" value={passengerProfile?.rating ? `${passengerProfile.rating} ⭐` : "—"} />
               </div>
             </div>
 

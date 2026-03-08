@@ -12,14 +12,14 @@ import L from "leaflet"
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
 // ── Map helpers ──────────────────────────────────────────────────────────────
 
 function RecenterMap({ position }) {
-  const map  = useMap()
+  const map = useMap()
   const prev = useRef(null)
   useEffect(() => {
     if (!position) return
@@ -35,24 +35,24 @@ function MapClickHandler({ onPick }) {
   return null
 }
 
-const NOMINATIM   = "/nominatim"
+const NOMINATIM = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
 
 const extractShortName = (data) => {
-  const a    = data.address || {}
+  const a = data.address || {}
   const road = a.road || ""
   const area = a.neighbourhood || a.suburb || ""
   const city = a.city || a.town || a.village || a.county || ""
   if (road && area && city) return `${road}, ${area}, ${city}`
-  if (road && city)         return `${road}, ${city}`
-  if (area && city)         return `${area}, ${city}`
-  if (city)                 return city
+  if (road && city) return `${road}, ${city}`
+  if (area && city) return `${area}, ${city}`
+  if (city) return city
   return data.display_name?.split(",").slice(0, 3).join(",").trim() ?? "Current Location"
 }
 
 const reverseGeocode = async (lat, lng) => {
   try {
-    const res  = await fetch(`${NOMINATIM}/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: NOM_HEADERS })
+    const res = await fetch(`${NOMINATIM}/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: NOM_HEADERS })
     const data = await res.json()
     return extractShortName(data)
   } catch {
@@ -62,7 +62,7 @@ const reverseGeocode = async (lat, lng) => {
 
 const searchPlaces = async (query) => {
   try {
-    const res  = await fetch(
+    const res = await fetch(
       `${NOMINATIM}/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&limit=6`,
       { headers: NOM_HEADERS }
     )
@@ -70,8 +70,8 @@ const searchPlaces = async (query) => {
     return (Array.isArray(data) ? data : []).map((x) => ({
       label: x.display_name,
       short: extractShortName(x),
-      lat:   parseFloat(x.lat),
-      lng:   parseFloat(x.lon),
+      lat: parseFloat(x.lat),
+      lng: parseFloat(x.lon),
     }))
   } catch {
     return []
@@ -97,9 +97,9 @@ const formatDate = (dateStr) => {
 // ── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const map = {
-    completed:  { bg: "bg-green-100",  text: "text-green-700",  label: "Completed"  },
-    cancelled:  { bg: "bg-red-100",    text: "text-red-600",    label: "Cancelled"  },
-    active:     { bg: "bg-blue-100",   text: "text-blue-700",   label: "Active"     },
+    completed: { bg: "bg-green-100", text: "text-green-700", label: "Completed" },
+    cancelled: { bg: "bg-red-100", text: "text-red-600", label: "Cancelled" },
+    active: { bg: "bg-blue-100", text: "text-blue-700", label: "Active" },
   }
   const s = map[status?.toLowerCase()] || { bg: "bg-gray-100", text: "text-gray-600", label: status }
   return (
@@ -124,12 +124,12 @@ function Avatar({ name, size = "md" }) {
 
 // ────────────────────────────────────────────────────────────────────────────
 export default function RiderHome() {
-  const navigate   = useNavigate()
+  const navigate = useNavigate()
   const [tab, setTab] = useState("home")
 
   // ── User info ─────────────────────────────────────────────────────────────
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}")
-  const [profile,     setProfile]     = useState(null)
+  const [profile, setProfile] = useState(null)
   const [profileLoad, setProfileLoad] = useState(true)
 
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function RiderHome() {
   }, [])
 
   const firstName = profile?.firstName || storedUser?.firstName || "Rider"
-  const fullName  = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : ""
+  const fullName = profile ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() : ""
 
   // ── Profile dropdown ──────────────────────────────────────────────────────
   const [showDropdown, setShowDropdown] = useState(false)
@@ -156,15 +156,15 @@ export default function RiderHome() {
   }, [])
 
   const handleLogout = async () => {
-    try { await signOut(auth) } catch {}
+    try { await signOut(auth) } catch { }
     localStorage.clear()
     navigate("/login", { replace: true })
   }
 
   // ── History ───────────────────────────────────────────────────────────────
-  const [history,     setHistory]     = useState([])
+  const [history, setHistory] = useState([])
   const [historyLoad, setHistoryLoad] = useState(false)
-  const [historyErr,  setHistoryErr]  = useState("")
+  const [historyErr, setHistoryErr] = useState("")
 
   useEffect(() => {
     if (tab !== "history") return
@@ -178,10 +178,10 @@ export default function RiderHome() {
   }, [tab, profile])
 
   // ── Account edit ──────────────────────────────────────────────────────────
-  const [editEmail,    setEditEmail]    = useState("")
-  const [editMode,     setEditMode]     = useState(false)
-  const [editLoading,  setEditLoading]  = useState(false)
-  const [editMsg,      setEditMsg]      = useState("")
+  const [editEmail, setEditEmail] = useState("")
+  const [editMode, setEditMode] = useState(false)
+  const [editLoading, setEditLoading] = useState(false)
+  const [editMsg, setEditMsg] = useState("")
 
   const handleEditSave = async () => {
     if (!editEmail.trim()) return
@@ -189,9 +189,9 @@ export default function RiderHome() {
     setEditMsg("")
     try {
       await apiFetch("/auth/profile", {
-        method:  "PUT",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email: editEmail.trim().toLowerCase() }),
+        body: JSON.stringify({ email: editEmail.trim().toLowerCase() }),
       })
       setProfile(prev => ({ ...prev, email: editEmail.trim().toLowerCase() }))
       setEditMsg("Email updated successfully!")
@@ -204,25 +204,25 @@ export default function RiderHome() {
   }
 
   // ── Map / ride state ──────────────────────────────────────────────────────
-  const [liveGps,       setLiveGps]       = useState(null)
-  const [pinCoords,     setPinCoords]     = useState(null)
-  const [locationName,  setLocationName]  = useState("")
-  const [gpsStatus,     setGpsStatus]     = useState("loading")
+  const [liveGps, setLiveGps] = useState(null)
+  const [pinCoords, setPinCoords] = useState(null)
+  const [locationName, setLocationName] = useState("")
+  const [gpsStatus, setGpsStatus] = useState("loading")
   const [departureTime, setDepartureTime] = useState("")
-  const [timeError,     setTimeError]     = useState(false)
-  const [locError,      setLocError]      = useState(false)
-  const [showPopup,     setShowPopup]     = useState(false)
-  const [suggestions,   setSuggestions]   = useState([])
-  const [showDrop,      setShowDrop]      = useState(false)
-  const [loadingSugg,   setLoadingSugg]   = useState(false)
+  const [timeError, setTimeError] = useState(false)
+  const [locError, setLocError] = useState(false)
+  const [showPopup, setShowPopup] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [showDrop, setShowDrop] = useState(false)
+  const [loadingSugg, setLoadingSugg] = useState(false)
 
   const isUserTyping = useRef(false)
-  const debTimer     = useRef(null)
-  const dropRef      = useRef(null)
-  const watchIdRef   = useRef(null)
+  const debTimer = useRef(null)
+  const dropRef = useRef(null)
+  const watchIdRef = useRef(null)
 
   const collegeCoords = [12.872109642876621, 74.84534749009204]
-  const collegeName   = "St Aloysius College, Mangalore"
+  const collegeName = "St Aloysius College, Mangalore"
 
   const applyPin = useCallback(async (lat, lng) => {
     setPinCoords([lat, lng])
@@ -267,14 +267,14 @@ export default function RiderHome() {
     try {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (pos) => { if (!cancelled) setLiveGps([pos.coords.latitude, pos.coords.longitude]) },
-        () => {},
+        () => { },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       )
-    } catch {}
+    } catch { }
 
     return () => {
       cancelled = true
-      try { navigator.geolocation.clearWatch(watchIdRef.current) } catch {}
+      try { navigator.geolocation.clearWatch(watchIdRef.current) } catch { }
     }
   }, [applyPin])
 
@@ -315,7 +315,7 @@ export default function RiderHome() {
     setLocationName("Fetching your location…")
     setShowDrop(false)
     const onSuccess = (pos) => applyPin(pos.coords.latitude, pos.coords.longitude)
-    const onError   = () => { setGpsStatus("error"); setLocationName("") }
+    const onError = () => { setGpsStatus("error"); setLocationName("") }
     navigator.geolocation.getCurrentPosition(
       onSuccess,
       () => navigator.geolocation.getCurrentPosition(onSuccess, onError,
@@ -348,13 +348,21 @@ export default function RiderHome() {
   }
 
   const handleConfirm = () => {
+    // Auto-save so "Saved" button always reflects last ride
+    if (pinCoords) {
+      localStorage.setItem("savedRide", JSON.stringify({
+        pickupLat: pinCoords[0],
+        pickupLng: pinCoords[1],
+        departureTime,
+      }))
+    }
     setShowPopup(false)
     navigate("/rider-searching", {
       state: {
-        userLocation:     pinCoords,
-        liveGpsLocation:  liveGps,
-        collegeLocation:  collegeCoords,
-        departureTime:    formatTime(departureTime),
+        userLocation: pinCoords,
+        liveGpsLocation: liveGps,
+        collegeLocation: collegeCoords,
+        departureTime: formatTime(departureTime),
         departureTimeRaw: departureTime,
       },
     })
@@ -397,7 +405,7 @@ export default function RiderHome() {
       {showPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
-            
+
             <h2 className="text-lg font-bold text-center text-gray-900 mb-1">Confirm Ride Post</h2>
             <p className="text-sm text-center text-gray-400 mb-4">Ready to find passengers?</p>
             <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-2">
@@ -446,11 +454,11 @@ export default function RiderHome() {
               <div className="h-full flex flex-col items-center justify-center bg-slate-100 text-gray-400 text-sm gap-2">
                 <span className="text-3xl animate-bounce">📍</span>
                 {gpsStatus === "loading" && <span>Fetching your location…</span>}
-                {gpsStatus === "error"   && <span>Tap "Use current location" or type below</span>}
+                {gpsStatus === "error" && <span>Tap "Use current location" or type below</span>}
               </div>
             )}
           </div>
-{/* POST RIDE CARD */}
+          {/* POST RIDE CARD */}
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100 px-5 py-5 space-y-3">
 
             <h2 className="text-base font-bold text-gray-900">Post a Ride</h2>
@@ -486,7 +494,7 @@ export default function RiderHome() {
                 <button type="button" onClick={useCurrentLocation} title="Use current location"
                   className="text-teal-500 hover:text-teal-700 flex-shrink-0 transition">
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <circle cx="12" cy="12" r="3"/><path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
+                    <circle cx="12" cy="12" r="3" /><path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
                   </svg>
                 </button>
               </div>
@@ -524,7 +532,18 @@ export default function RiderHome() {
                 className="flex-1 py-3 rounded-xl bg-gray-900 hover:bg-gray-700 active:scale-95 text-white text-sm font-semibold transition">
                 Search for Passenger
               </button>
-              <button className="px-4 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition whitespace-nowrap">
+              <button
+                className="px-4 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition whitespace-nowrap"
+                onClick={() => {
+                  const saved = JSON.parse(localStorage.getItem("savedRide") || "null")
+                  if (!saved) { toast.error("No saved ride found"); return }
+                  if (saved.pickupLat && saved.pickupLng) {
+                    applyPin(saved.pickupLat, saved.pickupLng)
+                  }
+                  if (saved.departureTime) setDepartureTime(saved.departureTime)
+                  toast.success("Saved ride loaded! Adjust time if needed.")
+                }}
+              >
                 Saved
               </button>
             </div>
@@ -611,18 +630,18 @@ export default function RiderHome() {
                 </div>
                 <div className="space-y-3">
                   <InfoRow icon="🎓" label="University ID" value={profile?.universityId || "—"} />
-                  <InfoRow icon="📧" label="Email"         value={profile?.email || "—"} />
-                  <InfoRow icon="📱" label="Phone"         value={profile?.phone || storedUser?.phone || "—"} />
-                  <InfoRow icon="⚥"  label="Gender"        value={profile?.gender || "—"} />
+                  <InfoRow icon="📧" label="Email" value={profile?.email || "—"} />
+                  <InfoRow icon="📱" label="Phone" value={profile?.phone || storedUser?.phone || "—"} />
+                  <InfoRow icon="⚥" label="Gender" value={profile?.gender || "—"} />
                 </div>
               </div>
 
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                 <p className="text-sm font-bold text-gray-700 mb-3">Ride Statistics</p>
                 <div className="grid grid-cols-3 gap-3">
-                  <StatBox label="Total Rides"    value={profile?.totalRides    ?? history.length ?? "—"} />
+                  <StatBox label="Total Rides" value={profile?.totalRides ?? history.length ?? "—"} />
                   <StatBox label="Total Earnings" value={profile?.totalEarnings ? `₹${profile.totalEarnings}` : "—"} />
-                  <StatBox label="Rating"         value={profile?.rating        ? `${profile.rating} ⭐` : "—"} />
+                  <StatBox label="Rating" value={profile?.rating ? `${profile.rating} ⭐` : "—"} />
                 </div>
               </div>
 
@@ -669,7 +688,7 @@ export default function RiderHome() {
 
       {/* ── BOTTOM NAV ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">
-        <NavTab icon="🏠" label="Home"    active={tab === "home"}    onClick={() => setTab("home")} />
+        <NavTab icon="🏠" label="Home" active={tab === "home"} onClick={() => setTab("home")} />
         <NavTab icon="📋" label="History" active={tab === "history"} onClick={() => setTab("history")} />
         <NavTab icon="👤" label="Account" active={tab === "account"} onClick={() => setTab("account")} />
       </div>

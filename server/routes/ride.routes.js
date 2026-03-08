@@ -6,6 +6,7 @@ import Ride from "../models/Ride.js"
 import User from "../models/User.js"
 import * as rideService from "../services/ride.service.js"
 import auth from "../middleware/auth.js"
+import { reverseGeocode } from "../utils/geo.js"
 
 const router = express.Router()
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
@@ -40,23 +41,23 @@ router.post("/:id/request", auth, wrap(async (req, res) => {
 
   const ride = await rideService.lockRide(rideId, {
     userId: req.user._id,
-    name:   name  || req.user.firstName,
-    phone:  phone || req.user.phone,
-    lat:    pLat,
-    lng:    pLng,
+    name: name || req.user.firstName,
+    phone: phone || req.user.phone,
+    lat: pLat,
+    lng: pLng,
   })
 
   const pickupLat = ride.passenger?.location?.coordinates?.[1] ?? pLat
   const pickupLng = ride.passenger?.location?.coordinates?.[0] ?? pLng
 
   io.to(`ride:${ride._id}`).emit("ride:locked", {
-    rideId:         String(ride._id),
-    passengerName:  ride.passenger.name,
+    rideId: String(ride._id),
+    passengerName: ride.passenger.name,
     passengerPhone: ride.passenger.phone,
-    passengerLat:   pickupLat,
-    passengerLng:   pickupLng,
-    fare:           ride.fare.amount,
-    distanceKm:     ride.fare.distanceKm,
+    passengerLat: pickupLat,
+    passengerLng: pickupLng,
+    fare: ride.fare.amount,
+    distanceKm: ride.fare.distanceKm,
   })
 
   io.to("riders-watch").emit("ride:locked", { rideId: String(ride._id) })
@@ -66,6 +67,53 @@ router.post("/:id/request", auth, wrap(async (req, res) => {
 router.get("/active", auth, wrap(async (req, res) => {
   const ride = await rideService.getPassengerActiveRide(req.user._id)
   res.json({ success: true, data: { ride } })
+}))
+
+// ── PASSENGER RIDE HISTORY ────────────────────────────────────────────────────
+router.get("/history", auth, wrap(async (req, res) => {
+  const { riderId } = req.query
+  let query
+
+  if (riderId) {
+    // Rider's own history
+    query = { riderId: req.user._id, status: { $in: ["completed", "cancelled"] } }
+  } else {
+    // Passenger's history
+    query = { "passenger.userId": req.user._id, status: { $in: ["completed", "cancelled"] } }
+  }
+
+  const rides = await Ride.find(query).sort({ createdAt: -1 }).limit(30).lean()
+
+  // Reverse-geocode pickup coord for display using shared utility
+  const formatted = await Promise.all(rides.map(async r => {
+    const coords = r.passenger?.location?.coordinates // [lng, lat]
+    const pickupLocation = coords?.[0] && coords?.[1]
+      ? await reverseGeocode(coords[1], coords[0])  // reverseGeocode(lat, lng)
+      : null
+
+    // For rider history, also geocode their pickup location
+    const riderPickupCoords = r.pickupLocation?.coordinates // [lng, lat]
+    const riderPickupLocation = riderPickupCoords?.[0] && riderPickupCoords?.[1]
+      ? await reverseGeocode(riderPickupCoords[1], riderPickupCoords[0])
+      : null
+
+    return {
+      _id: r._id,
+      status: r.status,
+      riderName: r.riderName,
+      passengerName: r.passenger?.name || null,
+      fare: r.fare?.amount ?? null,
+      distanceKm: r.fare?.distanceKm ?? null,
+      departureTime: r.departureTimeStr || r.departureTime || null,
+      createdAt: r.createdAt,
+      pickupLocation: pickupLocation || riderPickupLocation,
+      destination: "St Aloysius College, Mangalore",
+      passengerReview: r.passengerReview || null,
+      riderReview: r.riderReview || null,
+    }
+  }))
+
+  res.json({ success: true, rides: formatted })
 }))
 
 // ── RIDER ROUTES ──────────────────────────────────────────────────────────────
@@ -100,11 +148,11 @@ router.post("/", auth, wrap(async (req, res) => {
   }
 
   const ride = await Ride.create({
-    riderId:          req.user._id,
-    riderName:        riderName    || req.user.firstName || "Rider",
-    riderPhone:       riderPhone   || req.user.phone     || "",
-    scooterNumber:    scooterNumber || "N/A",
-    departureTime:    departureTime    || null,
+    riderId: req.user._id,
+    riderName: riderName || req.user.firstName || "Rider",
+    riderPhone: riderPhone || req.user.phone || "",
+    scooterNumber: scooterNumber || "N/A",
+    departureTime: departureTime || null,
     departureTimeStr: departureTimeStr || departureTime || "",
     currentLocation: {
       type: "Point",
@@ -168,17 +216,95 @@ router.post("/:id/start", auth, wrap(async (req, res) => {
   res.json({ success: true, data: { ride } })
 }))
 
+// ── REACHED DESTINATION ──────────────────────────────────────────────────────
+router.post("/:id/reached", auth, wrap(async (req, res) => {
+  const ride = await Ride.findOne({ _id: req.params.id, riderId: req.user._id })
+  if (!ride) return res.status(404).json({ success: false, error: { code: "NOT_FOUND" } })
+  if (ride.status !== "ongoing") return res.status(400).json({
+    success: false,
+    error: { code: "INVALID_STATUS", message: "Ride must be ongoing to mark as reached" },
+  })
+  await Ride.findByIdAndUpdate(ride._id, {
+    $set: { status: "reached_destination", reachedAt: new Date() }
+  })
+  const distanceKm = ride.fare?.distanceKm
+  const fareAmount = ride.fare?.amount
+  // Notify both rider and passenger
+  io.to(`ride:${ride._id}`).emit("ride:reached_destination", {
+    rideId: String(ride._id),
+    distanceKm,
+    fare: fareAmount,
+  })
+  res.json({ success: true, data: { distanceKm, fare: fareAmount } })
+}))
+
 // ── COMPLETE ──────────────────────────────────────────────────────────────────
 router.post("/:id/complete", auth, wrap(async (req, res) => {
-  const ride = await rideService.completeRide(req.params.id, req.user._id, req.body.paymentMethod)
-  io.to(`ride:${ride._id}`).emit("ride:completed", { rideId: String(ride._id) })
-  res.json({ success: true, data: { ride } })
+  const ride = await Ride.findOne({ _id: req.params.id, riderId: req.user._id })
+  if (!ride) return res.status(404).json({ success: false, error: { code: "NOT_FOUND" } })
+  if (!['reached_destination', 'ongoing'].includes(ride.status)) return res.status(400).json({
+    success: false,
+    error: { code: "INVALID_STATUS", message: "Ride must be ongoing or reached to complete" },
+  })
+  const distKm = ride.fare?.distanceKm
+  const amount = ride.fare?.amount
+  await Ride.findByIdAndUpdate(ride._id, {
+    $set: { status: "completed", completedAt: new Date(), 'payment.method': 'cash', 'payment.status': 'paid' }
+  })
+  // Clear active ride from user records
+  await User.findByIdAndUpdate(ride.riderId, { $set: { activeRideId: null } })
+  if (ride.passenger?.userId) {
+    await User.findByIdAndUpdate(ride.passenger.userId, { $set: { activeRideId: null } })
+  }
+  io.to(`ride:${ride._id}`).emit("ride:completed", {
+    rideId: String(ride._id), distanceKm: distKm, fare: amount,
+  })
+  res.json({ success: true, data: { distanceKm: distKm, fare: amount } })
 }))
 
 // ── REJECT PASSENGER ──────────────────────────────────────────────────────────
 router.post("/:id/reject-passenger", auth, wrap(async (req, res) => {
   const ride = await rideService.rejectPassenger(req.params.id, req.user._id)
   res.json({ success: true, data: { ride } })
+}))
+
+// ── REVIEW ─────────────────────────────────────────────────────────────────────
+router.post("/:id/review", auth, wrap(async (req, res) => {
+  const { rating, review } = req.body
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ success: false, error: { code: "INVALID_RATING", message: "Rating must be 1–5" } })
+  }
+
+  const ride = await Ride.findById(req.params.id)
+  if (!ride) return res.status(404).json({ success: false, error: { code: "NOT_FOUND" } })
+  if (ride.status !== "completed") {
+    return res.status(400).json({ success: false, error: { code: "INVALID_STATUS", message: "Ride must be completed" } })
+  }
+
+  const isRider = String(ride.riderId) === String(req.user._id)
+  const isPassenger = ride.passenger?.userId && String(ride.passenger.userId) === String(req.user._id)
+
+  if (isRider) {
+    // Rider rates the passenger
+    if (ride.riderReview?.rating) return res.status(409).json({ success: false, error: { code: "ALREADY_REVIEWED" } })
+    await Ride.findByIdAndUpdate(ride._id, { $set: { riderReview: { rating, text: review || "", givenAt: new Date() } } })
+    if (ride.passenger?.userId) {
+      await User.findByIdAndUpdate(ride.passenger.userId, {
+        $inc: { passengerRatingSum: rating, passengerRatingCount: 1 }
+      })
+    }
+  } else if (isPassenger) {
+    // Passenger rates the rider
+    if (ride.passengerReview?.rating) return res.status(409).json({ success: false, error: { code: "ALREADY_REVIEWED" } })
+    await Ride.findByIdAndUpdate(ride._id, { $set: { passengerReview: { rating, text: review || "", givenAt: new Date() } } })
+    await User.findByIdAndUpdate(ride.riderId, {
+      $inc: { ratingSum: rating, ratingCount: 1 }
+    })
+  } else {
+    return res.status(403).json({ success: false, error: { code: "FORBIDDEN" } })
+  }
+
+  res.json({ success: true })
 }))
 
 // ── LOCATION UPDATE ───────────────────────────────────────────────────────────

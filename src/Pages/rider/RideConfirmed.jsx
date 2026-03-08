@@ -6,22 +6,23 @@ import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useLocation, useNavigate } from "react-router-dom"
 import { apiFetch } from "../../services/api"
+import SwipeButton from "../../components/ui/SwipeButton"
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
 async function reverseGeocode(lat, lng) {
   try {
-    const res  = await fetch(
+    const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
       { headers: { "Accept-Language": "en" } }
     )
     const data = await res.json()
-    const a    = data.address || {}
+    const a = data.address || {}
     const parts = [
       a.road || a.pedestrian || a.footway || "",
       a.neighbourhood || a.suburb || a.village || "",
@@ -49,13 +50,13 @@ function PinMarker({ position, color, emoji, label }) {
     })
     const m = L.marker(position, { icon }).addTo(map)
     if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -40] })
-    return () => { try { m.remove() } catch {} }
+    return () => { try { m.remove() } catch { } }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
 
 function RoutePolyline({ waypoints }) {
-  const map      = useMap()
+  const map = useMap()
   const [coords, setCoords] = useState([])
   const abortRef = useRef(null)
 
@@ -75,7 +76,7 @@ function RoutePolyline({ waypoints }) {
         const decoded = (data?.routes?.[0]?.geometry?.coordinates || []).map(([lng, lat]) => [lat, lng])
         setCoords(decoded)
         if (decoded.length > 1) {
-          try { map.fitBounds(L.latLngBounds(decoded), { padding: [52, 52], animate: true }) } catch {}
+          try { map.fitBounds(L.latLngBounds(decoded), { padding: [52, 52], animate: true }) } catch { }
         }
       })
       .catch(e => { if (e.name !== "AbortError") console.warn("Route error:", e) })
@@ -90,7 +91,7 @@ const COLLEGE = [12.8698, 74.8425]
 
 export default function RideConfirmed() {
   const location = useLocation()
-  const navigate  = useNavigate()
+  const navigate = useNavigate()
 
   const {
     rideId,
@@ -98,22 +99,22 @@ export default function RideConfirmed() {
     collegeLocation,
     departureTime,
     departureTimeRaw,
-    passengerName  = "Passenger",
+    passengerName = "Passenger",
     passengerPhone = "",
-    passengerLat   = null,
-    passengerLng   = null,
-    fare           = 0,
-    distanceKm     = 0,
+    passengerLat = null,
+    passengerLng = null,
+    fare = 0,
+    distanceKm = 0,
   } = location.state || {}
 
-  const destination     = collegeLocation || COLLEGE
+  const destination = collegeLocation || COLLEGE
   const passengerPickup = passengerLat && passengerLng
     ? [Number(passengerLat), Number(passengerLng)] : null
 
-  const [riderAddress,     setRiderAddress]     = useState("Getting location…")
+  const [riderAddress, setRiderAddress] = useState("Getting location…")
   const [passengerAddress, setPassengerAddress] = useState("Getting location…")
-  const [loading,          setLoading]          = useState(false)
-  const [error,            setError]            = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     if (userLocation?.[0] && userLocation?.[1])
@@ -127,7 +128,7 @@ export default function RideConfirmed() {
       setPassengerAddress("Location not available")
   }, [passengerLat, passengerLng])
 
-  const [canDepart,   setCanDepart]   = useState(!departureTimeRaw)
+  const [canDepart, setCanDepart] = useState(!departureTimeRaw)
   const [departLabel, setDepartLabel] = useState(departureTime || "Now")
 
   useEffect(() => {
@@ -150,9 +151,6 @@ export default function RideConfirmed() {
 
   const center = userLocation ?? passengerPickup ?? destination
 
-  // ── Rider clicks "Go Pick Up Passenger" ──────────────────────────────────
-  // Calls /pickup-start → status becomes "pickup_started"
-  // Passenger receives socket event → switches from UpcomingRide to ActiveRidePanel
   const handleGoPickUp = useCallback(async () => {
     if (!rideId) return
     setLoading(true)
@@ -177,7 +175,7 @@ export default function RideConfirmed() {
       setLoading(false)
     }
   }, [rideId, navigate, userLocation, destination, passengerPickup,
-      passengerName, passengerPhone, fare, distanceKm, departureTime])
+    passengerName, passengerPhone, fare, distanceKm, departureTime])
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -186,15 +184,17 @@ export default function RideConfirmed() {
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
           <RoutePolyline waypoints={waypoints} />
-          {userLocation    && <PinMarker position={userLocation}    color="#2563EB" emoji="🏍" label="You" />}
+          {userLocation && <PinMarker position={userLocation} color="#2563EB" emoji="🏍" label="You" />}
           {passengerPickup && <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />}
           <PinMarker position={destination} color="#DC2626" emoji="🎓" label="St Aloysius" />
         </MapContainer>
       </div>
 
       <div className="flex-1 bg-white px-5 pt-5 pb-8 flex flex-col gap-4"
-        style={{ borderRadius: "24px 24px 0 0", marginTop: -20,
-          boxShadow: "0 -4px 24px rgba(0,0,0,0.08)", position: "relative", zIndex: 10 }}>
+        style={{
+          borderRadius: "24px 24px 0 0", marginTop: -20,
+          boxShadow: "0 -4px 24px rgba(0,0,0,0.08)", position: "relative", zIndex: 10
+        }}>
 
         <div className="flex justify-center -mt-1 mb-1">
           <div className="w-10 h-1 rounded-full bg-gray-200" />
@@ -205,7 +205,7 @@ export default function RideConfirmed() {
             <p className="text-xs font-semibold text-green-600 uppercase tracking-widest mb-0.5">Passenger Found</p>
             <h2 className="text-xl font-bold text-gray-900">Ride Confirmed</h2>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-lg">✓</div>
+          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-lg font-bold text-green-600">✓</div>
         </div>
 
         <div className="rounded-2xl p-4 bg-gray-50 border border-gray-100 space-y-3">
@@ -227,7 +227,7 @@ export default function RideConfirmed() {
                 <p className="text-sm font-semibold text-gray-800 leading-snug">{passengerAddress}</p>
                 {passengerPhone && (
                   <a href={`tel:${passengerPhone}`} className="text-xs text-blue-600 font-medium mt-0.5 inline-block">
-                    📞 {passengerPhone}
+                    {passengerPhone}
                   </a>
                 )}
               </div>
@@ -255,7 +255,6 @@ export default function RideConfirmed() {
         </div>
 
         <div className="rounded-xl p-3 flex items-start gap-3 bg-amber-50 border border-amber-200">
-          <span className="text-xl mt-0.5">🔐</span>
           <div>
             <p className="text-sm font-semibold text-amber-800">OTP Required at Pickup</p>
             <p className="text-xs text-amber-700 mt-0.5">Ask your passenger for their 4-digit OTP when you arrive.</p>
@@ -264,16 +263,18 @@ export default function RideConfirmed() {
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-        <button
-          onClick={handleGoPickUp}
-          disabled={!canDepart || loading}
-          className={`w-full py-4 rounded-2xl font-bold text-white text-base transition
-            ${canDepart && !loading
-              ? "bg-green-600 hover:bg-green-700 active:scale-95"
-              : "bg-gray-300 cursor-not-allowed text-gray-500"}`}
-        >
-          {loading ? "Starting…" : canDepart ? "Go Pick Up Passenger →" : `Wait until ${departLabel}`}
-        </button>
+        {canDepart ? (
+          <SwipeButton
+            label="Slide to Go Pick Up Passenger"
+            color="#16a34a"
+            disabled={loading}
+            onSwipeComplete={handleGoPickUp}
+          />
+        ) : (
+          <div className="w-full py-4 rounded-2xl bg-gray-100 text-center text-gray-500 font-semibold text-sm">
+            Wait until {departLabel}
+          </div>
+        )}
       </div>
     </div>
   )

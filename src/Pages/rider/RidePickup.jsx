@@ -6,19 +6,21 @@ import L from "leaflet"
 import { useLocation, useNavigate } from "react-router-dom"
 import { apiFetch } from "../../services/api"
 import { socket, connectSocket } from "../../services/socket"
+import toast from "react-hot-toast"
+import SwipeButton from "../../components/ui/SwipeButton"
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-const COLLEGE          = [12.872109642876621, 74.84534749009204]
-const AVG_SPEED_KMH    = 40
-const PEAK_MULTIPLIER  = 1.5
-const PEAK_START       = 8
-const PEAK_END         = 9
+const COLLEGE = [12.872109642876621, 74.84534749009204]
+const AVG_SPEED_KMH = 40
+const PEAK_MULTIPLIER = 1.5
+const PEAK_START = 8
+const PEAK_END = 9
 
 function isPeakHour() {
   const h = new Date().getHours()
@@ -26,24 +28,24 @@ function isPeakHour() {
 }
 
 function calcEta(fromLat, fromLng, toLat, toLng) {
-  const R    = 6371
+  const R = 6371
   const dLat = ((toLat - fromLat) * Math.PI) / 180
   const dLng = ((toLng - fromLng) * Math.PI) / 180
-  const a    =
+  const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((fromLat * Math.PI) / 180) *
-    Math.cos((toLat   * Math.PI) / 180) *
+    Math.cos((toLat * Math.PI) / 180) *
     Math.sin(dLng / 2) ** 2
   const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  const speed  = isPeakHour() ? AVG_SPEED_KMH / PEAK_MULTIPLIER : AVG_SPEED_KMH
+  const speed = isPeakHour() ? AVG_SPEED_KMH / PEAK_MULTIPLIER : AVG_SPEED_KMH
   return { distKm: Number(distKm.toFixed(1)), etaMin: Math.max(1, Math.round((distKm / speed) * 60)) }
 }
 
 const haversineM = ([lat1, lng1], [lat2, lng2]) => {
-  const R  = 6371000
+  const R = 6371000
   const dL = ((lat2 - lat1) * Math.PI) / 180
   const dl = ((lng2 - lng1) * Math.PI) / 180
-  const a  = Math.sin(dL / 2) ** 2 +
+  const a = Math.sin(dL / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
     Math.cos((lat2 * Math.PI) / 180) *
     Math.sin(dl / 2) ** 2
@@ -65,9 +67,11 @@ function PinLayer({ position, color, emoji, label }) {
       iconSize: [40, 40], iconAnchor: [20, 40],
     })
     const m = L.marker(position, { icon }).addTo(map)
-    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -44],
-      className: "leaflet-tooltip-custom" })
-    return () => { try { m.remove() } catch {} }
+    if (label) m.bindTooltip(label, {
+      permanent: true, direction: "top", offset: [0, -44],
+      className: "leaflet-tooltip-custom"
+    })
+    return () => { try { m.remove() } catch { } }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
@@ -80,20 +84,20 @@ function AccuracyRing({ position }) {
       radius: 50, color: "#2563EB", fillColor: "#2563EB",
       fillOpacity: 0.10, weight: 1.5, dashArray: "5 5",
     }).addTo(map)
-    return () => { try { c.remove() } catch {} }
+    return () => { try { c.remove() } catch { } }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
 }
 
 function FitRoute({ coords }) {
-  const map  = useMap()
+  const map = useMap()
   const prev = useRef(null)
   useEffect(() => {
     if (!coords || coords.length < 2) return
     const key = `${coords[0]}-${coords[coords.length - 1]}`
     if (prev.current === key) return
     prev.current = key
-    try { map.fitBounds(L.latLngBounds(coords), { padding: [56, 56], animate: true, duration: 1.0 }) } catch {}
+    try { map.fitBounds(L.latLngBounds(coords), { padding: [56, 56], animate: true, duration: 1.0 }) } catch { }
   }, [coords, map])
   return null
 }
@@ -102,11 +106,15 @@ const getOsrmRoute = async (from, to, signal) => {
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/` +
       `${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`
-    const res  = await fetch(url, { signal })
+    const res = await fetch(url, { signal })
     const data = await res.json()
     const route = data?.routes?.[0]
     if (!route) return null
-    return { coords: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]) }
+    return {
+      coords: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+      durationMin: Math.round(route.duration / 60),
+      distKm: Number((route.distance / 1000).toFixed(1)),
+    }
   } catch (e) {
     if (e.name !== "AbortError") console.warn("OSRM:", e.message)
     return null
@@ -190,8 +198,8 @@ function ReportModal({ onClose, rideId }) {
     "Other issue",
   ]
   const [selected, setSelected] = useState("")
-  const [details,  setDetails]  = useState("")
-  const [sent,     setSent]     = useState(false)
+  const [details, setDetails] = useState("")
+  const [sent, setSent] = useState(false)
 
   const submit = () => {
     if (!selected) return
@@ -270,7 +278,7 @@ function HelpModal({ onClose }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function RidePickup() {
   const { state } = useLocation()
-  const navigate  = useNavigate()
+  const navigate = useNavigate()
 
   const {
     rideId, userLocation, collegeLocation,
@@ -278,22 +286,24 @@ export default function RidePickup() {
     passengerPhone = "", fare = 20, departureTime = "",
   } = state || {}
 
-  const [riderPos,    setRiderPos]    = useState(userLocation ?? null)
+  const [riderPos, setRiderPos] = useState(userLocation ?? null)
   const [routeCoords, setRouteCoords] = useState([])
-  const [arrived,     setArrived]     = useState(false)
-  const [otp,         setOtp]         = useState("")
-  const [otpError,    setOtpError]    = useState("")
-  const [submitting,  setSubmitting]  = useState(false)
-  const [phase,       setPhase]       = useState("toPassenger") // "toPassenger" | "toCollege"
-  const [etaToPass,   setEtaToPass]   = useState(null)
-  const [etaToCol,    setEtaToCol]    = useState(null)
-  const [distToCol,   setDistToCol]   = useState(null)
-  const [showReport,  setShowReport]  = useState(false)
-  const [showHelp,    setShowHelp]    = useState(false)
+  const [arrived, setArrived] = useState(false)
+  const [otp, setOtp] = useState("")
+  const [otpError, setOtpError] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [phase, setPhase] = useState("toPassenger") // "toPassenger" | "toCollege"
+  const [etaToPass, setEtaToPass] = useState(null)
+  const [etaToCol, setEtaToCol] = useState(null)
+  const [distToCol, setDistToCol] = useState(null)
+  const [showReport, setShowReport] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
+  // ── Endgame flow ──────────────────────────────────────────────────────────
+  const [reachLoading, setReachLoading] = useState(false)
 
   const watchRef = useRef(null)
   const abortRef = useRef(null)
-  const isPeak   = isPeakHour()
+  const isPeak = isPeakHour()
 
   // ── Socket ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -312,28 +322,13 @@ export default function RidePickup() {
         setRiderPos([lat, lng])
         socket.emit("rider:location", { rideId, lat, lng })
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
     )
-    return () => { try { navigator.geolocation.clearWatch(watchRef.current) } catch {} }
+    return () => { try { navigator.geolocation.clearWatch(watchRef.current) } catch { } }
   }, [rideId])
 
-  // ── ETA recalculation ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!riderPos) return
-    if (phase === "toPassenger" && passengerPickup) {
-      const { etaMin } = calcEta(riderPos[0], riderPos[1], passengerPickup[0], passengerPickup[1])
-      setEtaToPass(etaMin)
-      if (haversineM(riderPos, passengerPickup) <= 80) setArrived(true)
-    } else if (phase === "toCollege") {
-      const dest = collegeLocation || COLLEGE
-      const { distKm, etaMin } = calcEta(riderPos[0], riderPos[1], dest[0], dest[1])
-      setEtaToCol(etaMin)
-      setDistToCol(distKm)
-    }
-  }, [riderPos?.[0], riderPos?.[1], phase]) // eslint-disable-line
-
-  // ── OSRM route ────────────────────────────────────────────────────────────
+  // \u2500\u2500 OSRM route + ETA (single source of truth \u2014 matches passenger ActiveRidePanel) \u2500\u2500
   useEffect(() => {
     if (!riderPos) return
     const dest = phase === "toCollege"
@@ -346,10 +341,20 @@ export default function RidePickup() {
     abortRef.current = ctrl
 
     getOsrmRoute(riderPos, dest, ctrl.signal).then(r => {
-      if (r) setRouteCoords(r.coords)
+      if (!r) return
+      setRouteCoords(r.coords)
+      // Use OSRM road distance/duration — same as passenger's view
+      if (phase === "toPassenger") {
+        setEtaToPass(r.durationMin)
+        if (haversineM(riderPos, passengerPickup) <= 80) setArrived(true)
+      } else {
+        setEtaToCol(r.durationMin)
+        setDistToCol(r.distKm)
+      }
     })
     return () => ctrl.abort()
   }, [riderPos?.[0], riderPos?.[1], phase]) // eslint-disable-line
+
 
   // ── OTP verify ────────────────────────────────────────────────────────────
   const handleVerify = async () => {
@@ -372,30 +377,35 @@ export default function RidePickup() {
     }
   }
 
-  // ── Complete ride ─────────────────────────────────────────────────────────
-  const handleComplete = async () => {
+  // ── Reached Destination — navigate to full rider payment page ──────────────
+  const handleReached = async () => {
+    setReachLoading(true)
     try {
-      await apiFetch(`/rides/${rideId}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethod: "cash" }),
+      const data = await apiFetch(`/rides/${rideId}/reached`, { method: "POST" })
+      // Use server-calculated distanceKm (passenger pickup → college) from fare
+      const serverDistKm = data?.data?.distanceKm ?? distToCol
+      const serverFare = data?.data?.fare ?? fare
+      navigate("/rider-payment", {
+        replace: true,
+        state: { rideId, distanceKm: serverDistKm, fare: serverFare, passengerName },
       })
-      navigate("/rider-home", { replace: true })
     } catch (e) {
-      console.error("Complete failed:", e)
+      toast.error(e?.message || "Could not mark as reached. Try again.")
+    } finally {
+      setReachLoading(false)
     }
   }
 
-  const mapCenter     = riderPos ?? passengerPickup ?? COLLEGE
-  const currentEta    = phase === "toCollege" ? etaToCol : etaToPass
-  const etaLabel      = phase === "toCollege" ? "ETA to College" : "ETA to Passenger"
-  const routeColor    = phase === "toCollege" ? "#16a34a" : "#2563EB"
-  const destPin       = phase === "toCollege" ? (collegeLocation || COLLEGE) : passengerPickup
+  const mapCenter = riderPos ?? passengerPickup ?? COLLEGE
+  const currentEta = phase === "toCollege" ? etaToCol : etaToPass
+  const etaLabel = phase === "toCollege" ? "Reaching college in" : "ETA to Passenger"
+  const routeColor = phase === "toCollege" ? "#16a34a" : "#2563EB"
+  const destPin = phase === "toCollege" ? (collegeLocation || COLLEGE) : passengerPickup
 
   return (
     <>
       {showReport && <ReportModal onClose={() => setShowReport(false)} rideId={rideId} />}
-      {showHelp   && <HelpModal  onClose={() => setShowHelp(false)} />}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
 
@@ -427,17 +437,6 @@ export default function RidePickup() {
           </MapContainer>
 
           {/* Status badge */}
-          <div style={{
-            position: "absolute", top: 14, left: 14, zIndex: 500,
-            background: arrived && phase === "toPassenger" ? "#16a34a"
-              : phase === "toCollege" ? "#16a34a" : "#2563EB",
-            color: "white", borderRadius: 999, padding: "7px 16px",
-            fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.20)",
-          }}>
-            {phase === "toCollege" ? "🎓 TO COLLEGE"
-              : arrived ? "✓ AT PICKUP" : "🏍 EN ROUTE"}
-          </div>
 
           {/* Help + Report overlay */}
           <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
@@ -467,8 +466,10 @@ export default function RidePickup() {
           {/* Title */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
-                color: phase === "toCollege" ? "#16a34a" : "#2563EB" }}>
+              <p style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
+                color: phase === "toCollege" ? "#16a34a" : "#2563EB"
+              }}>
                 {phase === "toCollege" ? "RIDE IN PROGRESS" : "Pickup Passenger"}
               </p>
               <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>
@@ -484,8 +485,10 @@ export default function RidePickup() {
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <div>
-              <p style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600,
-                letterSpacing: "0.08em", margin: "0 0 2px" }}>{etaLabel.toUpperCase()}</p>
+              <p style={{
+                fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600,
+                letterSpacing: "0.08em", margin: "0 0 2px"
+              }}>{etaLabel.toUpperCase()}</p>
               <p style={{ fontSize: 48, fontWeight: 900, color: "white", margin: 0, lineHeight: 1 }}>
                 {currentEta != null ? currentEta : "—"}
                 <span style={{ fontSize: 16, fontWeight: 600, marginLeft: 6, color: "rgba(255,255,255,0.6)" }}>
@@ -546,8 +549,10 @@ export default function RidePickup() {
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
                 }}>🔐</div>
                 <div>
-                  <p style={{ fontWeight: 700, fontSize: 14, margin: "0 0 1px",
-                    color: arrived ? "#15803d" : "#64748b" }}>
+                  <p style={{
+                    fontWeight: 700, fontSize: 14, margin: "0 0 1px",
+                    color: arrived ? "#15803d" : "#64748b"
+                  }}>
                     {arrived ? "Enter passenger's OTP" : "OTP unlocks on arrival"}
                   </p>
                   <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>
@@ -565,46 +570,46 @@ export default function RidePickup() {
                 </p>
               )}
 
-              <button onClick={handleVerify}
-                disabled={!arrived || otp.length < 4 || submitting}
-                style={{
-                  width: "100%", marginTop: 14, padding: "14px 0",
-                  borderRadius: 14, border: "none", fontSize: 15, fontWeight: 700,
-                  cursor: (!arrived || otp.length < 4 || submitting) ? "not-allowed" : "pointer",
-                  background: (!arrived || otp.length < 4) ? "#e2e8f0"
-                    : "linear-gradient(135deg,#16a34a,#15803d)",
-                  color: (!arrived || otp.length < 4) ? "#94a3b8" : "white",
-                  boxShadow: (arrived && otp.length === 4) ? "0 4px 18px rgba(22,163,74,0.28)" : "none",
-                }}>
-                {submitting ? "Verifying…"
-                  : !arrived ? "Drive to passenger first"
-                  : otp.length < 4 ? "Enter OTP to continue"
-                  : "Verify OTP & Start Ride →"}
-              </button>
+              <div style={{ marginTop: 14 }}>
+                {arrived && otp.length === 4 ? (
+                  <SwipeButton
+                    label={submitting ? "Verifying…" : "Slide to Verify OTP and Start Ride"}
+                    color="#16a34a"
+                    disabled={submitting}
+                    onSwipeComplete={handleVerify}
+                  />
+                ) : (
+                  <div style={{
+                    width: "100%", padding: "14px 0", borderRadius: 14,
+                    background: "#e2e8f0", color: "#94a3b8",
+                    fontSize: 14, fontWeight: 600, textAlign: "center",
+                  }}>
+                    {!arrived ? "Drive to passenger first" : "Enter OTP to continue"}
+                  </div>
+                )}
+              </div>
 
               {!arrived && (
                 <button onClick={() => setArrived(true)} style={{
-                  width: "100%", marginTop: 8, padding: "11px 0",
+                  width: "100%", marginTop: 10, padding: "11px 0",
                   borderRadius: 12, border: "1.5px solid #cbd5e1",
                   background: "transparent", color: "#64748b",
                   fontSize: 13, fontWeight: 600, cursor: "pointer",
                 }}>
-                  I've reached the pickup point
+                  I have reached the pickup point
                 </button>
               )}
             </div>
           )}
 
-          {/* Complete ride button — once ride started */}
+          {/* Reached Destination — swipe button shown when heading to college */}
           {phase === "toCollege" && (
-            <button onClick={handleComplete} style={{
-              width: "100%", padding: "16px 0", borderRadius: 16,
-              background: "linear-gradient(135deg,#16a34a,#15803d)",
-              color: "white", fontSize: 16, fontWeight: 800, border: "none", cursor: "pointer",
-              boxShadow: "0 4px 18px rgba(22,163,74,0.3)",
-            }}>
-              ✓ Complete Ride & Collect ₹{fare}
-            </button>
+            <SwipeButton
+              label={reachLoading ? "Updating…" : "Slide to Mark as Reached Destination"}
+              color="#16a34a"
+              disabled={reachLoading}
+              onSwipeComplete={handleReached}
+            />
           )}
 
           {/* Report + Help buttons */}

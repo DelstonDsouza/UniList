@@ -23,7 +23,7 @@ function generateOTP() {
 
 // ── Per-ride route cache ──────────────────────────────────────────────────────
 const rideRouteCache = new Map()
-const ROUTE_TTL_MS   = 10 * 60 * 1000  // 10 min
+const ROUTE_TTL_MS = 10 * 60 * 1000  // 10 min
 
 function getCachedRoute(rideId) {
   const entry = rideRouteCache.get(String(rideId))
@@ -74,7 +74,7 @@ async function getPickupInfo(ride, passengerLat, passengerLng) {
 
   // ── Find nearest point on route for PASSENGER ─────────────────────────────
   const passengerNearest = nearestPointOnRoute(routePoints, passengerLat, passengerLng)
-  const distToRoute      = passengerNearest.distanceKm
+  const distToRoute = passengerNearest.distanceKm
 
   // Case 3: passenger > 2km from route → not eligible
   if (distToRoute > 2) return null
@@ -90,8 +90,8 @@ async function getPickupInfo(ride, passengerLat, passengerLng) {
   // (rider would have to turn back to pick them up) → reject.
   //
   // DIRECTION_SLACK: allow 2 segments of tolerance for GPS noise.
-  const riderNearest     = nearestPointOnRoute(routePoints, riderLat, riderLng)
-  const DIRECTION_SLACK  = 2
+  const riderNearest = nearestPointOnRoute(routePoints, riderLat, riderLng)
+  const DIRECTION_SLACK = 2
 
   if (passengerNearest.routeIndex < riderNearest.routeIndex - DIRECTION_SLACK) {
     console.log(
@@ -140,8 +140,8 @@ export async function getNearbyRides(passengerLat, passengerLng) {
     allPending.map(async (ride) => {
       const pickupInfo = await getPickupInfo(ride, passengerLat, passengerLng)
       if (!pickupInfo) return null
-      const riderLat     = ride.currentLocation?.coordinates?.[1]
-      const riderLng     = ride.currentLocation?.coordinates?.[0]
+      const riderLat = ride.currentLocation?.coordinates?.[1]
+      const riderLng = ride.currentLocation?.coordinates?.[0]
       const locationName = await reverseGeocode(riderLat, riderLng)
       return { ...ride, locationName, ...pickupInfo }
     })
@@ -153,7 +153,7 @@ export async function getNearbyRides(passengerLat, passengerLng) {
 // ── LOCK RIDE ─────────────────────────────────────────────────────────────────
 export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
   const ride = await Ride.findById(rideId)
-  if (!ride)                     throw httpError("Ride not found.", 404)
+  if (!ride) throw httpError("Ride not found.", 404)
   if (ride.status !== "pending") throw httpError("Ride no longer available.", 409)
 
   const pickupInfo = await getPickupInfo(ride, lat, lng)
@@ -166,9 +166,9 @@ export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
     userId, name, phone,
     location: { type: "Point", coordinates: [lng, lat] },
   }
-  ride.fare     = { distanceKm: km, amount: fare, calculatedAt: new Date() }
-  ride.otp      = otp
-  ride.status   = "locked"
+  ride.fare = { distanceKm: km, amount: fare, calculatedAt: new Date() }
+  ride.otp = otp
+  ride.status = "locked"
   ride.lockedAt = new Date()
   await ride.save()
   return ride
@@ -180,7 +180,7 @@ export async function startRide(rideId, riderId) {
   if (!ride) throw httpError("Ride not found.", 404)
   if (!["locked", "pickup_started"].includes(ride.status))
     throw httpError("Ride must be locked or pickup_started before starting.", 400)
-  ride.status    = "ongoing"
+  ride.status = "ongoing"
   ride.startedAt = new Date()
   await ride.save()
   clearRideRouteCache(rideId)
@@ -190,10 +190,10 @@ export async function startRide(rideId, riderId) {
 // ── COMPLETE RIDE ─────────────────────────────────────────────────────────────
 export async function completeRide(rideId, riderId, paymentMethod) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
-  if (!ride)                     throw httpError("Ride not found.", 404)
+  if (!ride) throw httpError("Ride not found.", 404)
   if (ride.status !== "ongoing") throw httpError("Ride must be ongoing to complete.", 400)
-  ride.status         = "completed"
-  ride.completedAt    = new Date()
+  ride.status = "completed"
+  ride.completedAt = new Date()
   ride.payment.method = paymentMethod || "cash"
   ride.payment.status = "paid"
   await ride.save()
@@ -206,10 +206,10 @@ export async function rejectPassenger(rideId, riderId) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
   if (!ride) throw httpError("Ride not found.", 404)
   ride.passenger = null
-  ride.fare      = null
-  ride.otp       = null
-  ride.status    = "pending"
-  ride.lockedAt  = null
+  ride.fare = null
+  ride.otp = null
+  ride.status = "pending"
+  ride.lockedAt = null
   await ride.save()
   return ride
 }
@@ -218,7 +218,7 @@ export async function rejectPassenger(rideId, riderId) {
 export async function getPassengerActiveRide(userId) {
   return Ride.findOne({
     "passenger.userId": userId,
-    status: { $in: ["locked", "pickup_started", "ongoing"] },
+    status: { $in: ["locked", "pickup_started", "ongoing", "reached_destination"] },
   }).lean()
 }
 

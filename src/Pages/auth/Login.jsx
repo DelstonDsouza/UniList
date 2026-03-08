@@ -99,11 +99,11 @@ function TermsModal({ onClose }) {
 }
 
 export default function Login() {
-  const [step,      setStep]      = useState(1)
-  const [phone,     setPhone]     = useState("")
-  const [otp,       setOtp]       = useState("")
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState("")
+  const [step, setStep] = useState(1)
+  const [phone, setPhone] = useState("")
+  const [otp, setOtp] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
   const [showTerms, setShowTerms] = useState(false)
   const navigate = useNavigate()
 
@@ -146,20 +146,20 @@ export default function Login() {
     try {
       setLoading(true)
 
-      const result       = await window.confirmationResult.confirm(otp)
+      const result = await window.confirmationResult.confirm(otp)
       const firebaseUser = result.user
-      const idToken      = await firebaseUser.getIdToken()
+      const idToken = await firebaseUser.getIdToken()
 
       const data = await apiFetch("/auth/firebase", {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken }),
       })
 
       setToken(data.token)
 
       localStorage.setItem("user", JSON.stringify({
-        uid:   data.userId,
+        uid: data.userId,
         phone: firebaseUser.phoneNumber,
       }))
 
@@ -175,7 +175,7 @@ export default function Login() {
 
     } catch (err) {
       console.error("OTP verify error:", err)
-      setError("Invalid OTP or authentication failed")
+      setError("Invalid OTP")
     } finally {
       setLoading(false)
     }

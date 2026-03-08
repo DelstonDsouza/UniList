@@ -22,11 +22,13 @@ import BecomeRider from "./pages/rider/BecomeRider"
 import RiderRegistration from "./pages/rider/RiderRegistration"
 import PassengerHome from "./pages/passenger/PassengerHome"
 import PassengerDashboard from "./pages/passenger/PassengerDashboard"
+import PassengerPayment from "./pages/passenger/PassengerPayment"
+import RiderPayment from "./pages/rider/RiderPayment"
 import Admin from "./pages/admin/Admin"
 
 // ✅ Defined OUTSIDE App — never recreated on re-render
 const AuthGate = ({ children }) => {
-  const [ready,  setReady]  = useState(false)
+  const [ready, setReady] = useState(false)
   const [authed, setAuthed] = useState(false)
 
   useEffect(() => {
@@ -48,32 +50,36 @@ function App() {
       <Routes>
 
         {/* ── Public ───────────────────────────────────────────────────── */}
-        <Route path="/"            element={<Home />} />
-        <Route path="/login"       element={<Login />} />
-        <Route path="/register"    element={<RegisterDetails />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<RegisterDetails />} />
         <Route path="/login/rider" element={<RiderLogin />} />
 
         {/* ── Onboarding ───────────────────────────────────────────────── */}
         <Route path="/select-role" element={<AuthGate><SelectRole /></AuthGate>} />
 
         {/* ── Rider ────────────────────────────────────────────────────── */}
-        <Route path="/rider"      element={<AuthGate><RiderHome /></AuthGate>} />
+        <Route path="/rider" element={<AuthGate><RiderHome /></AuthGate>} />
         <Route path="/rider-home" element={<AuthGate><RiderHome /></AuthGate>} />
 
-        <Route path="/pick-location"    element={<AuthGate><PickLocation /></AuthGate>} />
-        <Route path="/rider-searching"  element={<AuthGate><RiderSearching /></AuthGate>} />
-        <Route path="/ride-confirmed"   element={<AuthGate><RideConfirmed /></AuthGate>} />
-        <Route path="/ride-pickup"      element={<AuthGate><RidePickup /></AuthGate>} />
+        <Route path="/pick-location" element={<AuthGate><PickLocation /></AuthGate>} />
+        <Route path="/rider-searching" element={<AuthGate><RiderSearching /></AuthGate>} />
+        <Route path="/ride-confirmed" element={<AuthGate><RideConfirmed /></AuthGate>} />
+        <Route path="/ride-pickup" element={<AuthGate><RidePickup /></AuthGate>} />
         <Route path="/rider-otp-verify" element={<Navigate to="/ride-pickup" replace />} />
 
-        <Route path="/giveride"           element={<AuthGate><GiveRide /></AuthGate>} />
-        <Route path="/rider-wait/:id"     element={<AuthGate><RiderWait /></AuthGate>} />
-        <Route path="/become-rider"       element={<AuthGate><BecomeRider /></AuthGate>} />
+        <Route path="/giveride" element={<AuthGate><GiveRide /></AuthGate>} />
+        <Route path="/rider-wait/:id" element={<AuthGate><RiderWait /></AuthGate>} />
+        <Route path="/become-rider" element={<AuthGate><BecomeRider /></AuthGate>} />
         <Route path="/rider-registration" element={<AuthGate><RiderRegistration /></AuthGate>} />
 
         {/* ── Passenger ────────────────────────────────────────────────── */}
         <Route path="/passenger-home" element={<AuthGate><PassengerHome /></AuthGate>} />
-        <Route path="/dashboard"      element={<AuthGate><PassengerDashboard /></AuthGate>} />
+        <Route path="/dashboard" element={<AuthGate><PassengerDashboard /></AuthGate>} />
+        <Route path="/passenger-payment" element={<AuthGate><PassengerPayment /></AuthGate>} />
+
+        {/* ── Rider payment (after ride complete) ──────────────────────── */}
+        <Route path="/rider-payment" element={<AuthGate><RiderPayment /></AuthGate>} />
 
         {/* ── Admin ────────────────────────────────────────────────────── */}
         <Route path="/admin" element={<AuthGate><Admin /></AuthGate>} />

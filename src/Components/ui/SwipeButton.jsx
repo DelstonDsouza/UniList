@@ -4,10 +4,10 @@ import { useState, useRef, useCallback } from "react"
 const THRESHOLD = 0.85
 
 const SwipeButton = ({ label, onSwipeComplete, color = "#16a34a", disabled = false }) => {
-  const [dragging,  setDragging]  = useState(false)
-  const [progress,  setProgress]  = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [completed, setCompleted] = useState(false)
-  const trackRef  = useRef(null)
+  const trackRef = useRef(null)
   const startXRef = useRef(null)
 
   const thumbSize = 56
@@ -48,31 +48,32 @@ const SwipeButton = ({ label, onSwipeComplete, color = "#16a34a", disabled = fal
       ref={trackRef}
       className="relative select-none overflow-hidden rounded-2xl"
       style={{
-        height:     64,
+        height: 64,
+        width: "100%",
         background: `linear-gradient(135deg, ${color}22, ${color}11)`,
-        border:     `1.5px solid ${color}44`,
+        border: `1.5px solid ${color}44`,
       }}
     >
       <div
         className="absolute inset-0 rounded-2xl"
         style={{
           background: color,
-          width:      `${8 + thumbSize + thumbX}px`,
-          opacity:    0.15 + progress * 0.15,
+          width: `${8 + thumbSize + thumbX}px`,
+          opacity: 0.15 + progress * 0.15,
         }}
       />
       <span
         className="absolute inset-0 flex items-center justify-center text-sm font-semibold tracking-wide pointer-events-none"
         style={{ color, opacity: Math.max(1 - progress * 2, 0) }}
       >
-        {completed ? "Γ£ô Starting..." : label}
+        {completed ? "Done!" : label}
       </span>
       <div
         className="absolute top-1 flex items-center justify-center rounded-xl shadow-lg cursor-grab active:cursor-grabbing touch-none"
         style={{
-          left:       4 + thumbX,
-          width:      thumbSize,
-          height:     thumbSize,
+          left: 4 + thumbX,
+          width: thumbSize,
+          height: thumbSize,
           background: color,
           transition: dragging ? "none" : "left 0.35s cubic-bezier(0.34,1.56,0.64,1)",
         }}
@@ -90,3 +91,4 @@ const SwipeButton = ({ label, onSwipeComplete, color = "#16a34a", disabled = fal
 }
 
 export default SwipeButton
+
