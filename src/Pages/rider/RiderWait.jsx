@@ -31,7 +31,6 @@ const collegeIcon = new L.DivIcon({
   className: "", iconSize: [36, 36], iconAnchor: [18, 36],
 })
 
-// ── Fetches OSRM route and draws blue polyline ────────────────────────────────
 function RoutePolyline({ from, to }) {
   const map = useMap()
   const [coords, setCoords] = useState([])
@@ -53,13 +52,30 @@ function RoutePolyline({ from, to }) {
   }, [from, to, map])
 
   if (coords.length < 2) return null
-  return (
-    <Polyline
-      positions={coords}
-      pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.85 }}
-    />
-  )
+  return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.85 }} />
 }
+
+// ── Reverse geocode ────────────────────────────────────────────────────────────
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
+      { headers: { "User-Agent": "RideMateApp/1.0", "Accept-Language": "en" } }
+    )
+    const data = await res.json()
+    const a = data?.address || {}
+    const road = a.road || a.pedestrian || a.footway || ""
+    const area = a.neighbourhood || a.suburb || a.village || a.hamlet || ""
+    const city = a.city || a.town || a.city_district || a.county || ""
+    const parts = [road, area, city].filter(Boolean)
+    if (parts.length >= 2) return parts.join(", ")
+    if (parts.length === 1) return parts[0]
+    return data?.display_name?.split(",").slice(0, 3).join(", ").trim() || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+  } catch {
+    return `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+  }
+}
+
 
 export default function RiderWait() {
   const { id } = useParams()
@@ -68,26 +84,38 @@ export default function RiderWait() {
 
   const { userLocation, collegeLocation, departureTime, departureTimeRaw } = location.state || {}
 
+
   const [dots, setDots] = useState("")
   const [passengerJoined, setPassengerJoined] = useState(false)
   const [showCancelPopup, setShowCancelPopup] = useState(false)
-  const [showNoPassenger, setShowNoPassenger] = useState(false)  // fires when departure time passes
+  const [showNoPassenger, setShowNoPassenger] = useState(false)
+
+  // Location names
+  const [pickupName, setPickupName] = useState("Getting location…")
+  const [destinationName] = useState("St Aloysius College, Mangalore")
+
 
   const navigatedRef = useRef(false)
   const watchIdRef = useRef(null)
   const locationEmitRef = useRef(null)
 
+  // Reverse-geocode pickup
+  useEffect(() => {
+    if (!userLocation) return
+    reverseGeocode(userLocation[0], userLocation[1]).then(setPickupName)
+  }, [userLocation])
+
+  // Animate dots
   useEffect(() => {
     const t = setInterval(() => setDots(p => p.length >= 3 ? "" : p + "."), 500)
     return () => clearInterval(t)
   }, [])
 
-  // ── Departure time countdown: when it hits 0, show "No passengers found" popup ──
+
+  // Departure time countdown
   useEffect(() => {
     if (!departureTime && !departureTimeRaw) return
     const raw = departureTimeRaw || departureTime
-
-    // Parse "8:35 AM" or "08:35"
     const parse = (str) => {
       const ampm = str.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
       const h24 = str.trim().match(/^(\d{1,2}):(\d{2})$/)
@@ -103,23 +131,18 @@ export default function RiderWait() {
       const d = new Date(); d.setHours(h, m, 0, 0)
       return d
     }
-
     const target = parse(raw)
     if (!target) return
-
     const tick = () => {
       const diff = Math.round((target - Date.now()) / 1000)
-      if (diff <= 0 && !passengerJoined && !navigatedRef.current) {
-        setShowNoPassenger(true)
-        clearInterval(id)
-      }
+      if (diff <= 0 && !passengerJoined && !navigatedRef.current) setShowNoPassenger(true)
     }
-    const id = setInterval(tick, 1000)
-    tick() // run immediately too
-    return () => clearInterval(id)
+    const timer = setInterval(tick, 1000)
+    tick()
+    return () => clearInterval(timer)
   }, [departureTime, departureTimeRaw, passengerJoined])
 
-  // ── Socket: join room + listen for passenger accepting ────────────────────
+  // Socket
   useEffect(() => {
     if (!id) return
     connectSocket()
@@ -133,10 +156,8 @@ export default function RiderWait() {
         navigate("/ride-confirmed", {
           state: {
             rideId: data.rideId,
-            userLocation,
-            collegeLocation,
-            departureTime,
-            departureTimeRaw,
+            userLocation, collegeLocation,
+            departureTime, departureTimeRaw,
             passengerName: data.passengerName,
             passengerPhone: data.passengerPhone,
             passengerLat: data.passengerLat,
@@ -152,36 +173,28 @@ export default function RiderWait() {
     return () => socket.off("ride:locked", handleLocked)
   }, [id])
 
-  // ── GPS watch — only broadcasts live location to passenger via socket ─────
+  // GPS location emitter
   useEffect(() => {
     if (!id || !navigator.geolocation) return
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      () => { },
-      () => { },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
-    )
-
+    watchIdRef.current = navigator.geolocation.watchPosition(() => { }, () => { }, {
+      enableHighAccuracy: true, timeout: 10000, maximumAge: 3000,
+    })
     locationEmitRef.current = setInterval(() => {
       if (!socket.connected) return
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          socket.emit("rider:location", {
-            rideId: id,
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          })
-        },
+        (pos) => socket.emit("rider:location", {
+          rideId: id, lat: pos.coords.latitude, lng: pos.coords.longitude,
+        }),
         () => { },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 3000 }
       )
     }, 4000)
-
     return () => {
       navigator.geolocation.clearWatch(watchIdRef.current)
       clearInterval(locationEmitRef.current)
     }
   }, [id])
+
 
   const pickupCoords = userLocation || [12.9141, 74.8560]
   const collegeCoords = collegeLocation || [12.8721, 74.8453]
@@ -189,28 +202,23 @@ export default function RiderWait() {
   return (
     <div className="fixed inset-0 bg-white overflow-hidden">
 
-      {/* NO PASSENGERS FOUND POPUP */}
+
+      {/* NO PASSENGERS POPUP */}
       {showNoPassenger && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white p-8 rounded-3xl shadow-2xl text-center w-[88%] max-w-sm">
             <h2 className="text-xl font-bold text-gray-900 mb-2">No Passengers Found</h2>
-            <p className="text-gray-500 text-sm mb-6">
-              Departure time expired and no one joined the ride.
-            </p>
+            <p className="text-gray-500 text-sm mb-6">Departure time expired and no one joined.</p>
             <button
               onClick={async () => {
-                try {
-                  await apiFetch(`/rides/${id}/cancel`, { method: "POST" })
-                } catch { }
+                try { await apiFetch(`/rides/${id}/cancel`, { method: "POST" }) } catch { }
                 clearInterval(locationEmitRef.current)
                 navigator.geolocation.clearWatch(watchIdRef.current)
                 disconnectSocket(true)
                 navigate("/rider-home", { replace: true })
               }}
               className="w-full py-3 rounded-2xl bg-gray-900 text-white font-semibold text-base hover:bg-gray-700 transition"
-            >
-              Close
-            </button>
+            >Close</button>
           </div>
         </div>
       )}
@@ -226,9 +234,7 @@ export default function RiderWait() {
                 className="flex-1 py-3 rounded-xl bg-gray-200 font-medium">No</button>
               <button
                 onClick={async () => {
-                  try {
-                    await apiFetch(`/rides/${id}/cancel`, { method: "POST" })
-                  } catch (err) {
+                  try { await apiFetch(`/rides/${id}/cancel`, { method: "POST" }) } catch (err) {
                     console.error("Cancel failed:", err.message)
                   }
                   clearInterval(locationEmitRef.current)
@@ -252,66 +258,83 @@ export default function RiderWait() {
           <p className="text-sm font-semibold">
             {passengerJoined ? "✓ Passenger found!" : `Looking for passengers${dots}`}
           </p>
-          <p className="text-xs text-white/70">
-            {passengerJoined ? "Taking you to confirmation…" : ""}
-          </p>
         </div>
       </div>
 
-      {/* MAP — route from pickup → college */}
+      {/* MAP */}
       <div className="absolute top-0 left-0 right-0 h-[55vh] z-0">
-        <MapContainer
-          center={pickupCoords}
-          zoom={13}
-          zoomControl={false}
-          style={{ height: "100%", width: "100%" }}
-        >
+        <MapContainer center={pickupCoords} zoom={13} zoomControl={false}
+          style={{ height: "100%", width: "100%" }}>
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+            url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+            attribution="&copy; OpenStreetMap contributors"
+            maxZoom={20}
           />
-
-          {/* Pickup marker — rider's chosen location */}
           <Marker position={pickupCoords} icon={pickupIcon} />
-
-          {/* College destination marker */}
           <Marker position={collegeCoords} icon={collegeIcon} />
-
-          {/* Blue route polyline pickup → college */}
           <RoutePolyline from={pickupCoords} to={collegeCoords} />
         </MapContainer>
       </div>
 
       {/* BOTTOM SHEET */}
-      <div className="absolute bottom-0 w-full px-5 pb-6 z-10">
-        <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-lg space-y-5">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Your trip</p>
-            <p className="text-xs text-gray-400">Departure</p>
-            <p className="font-semibold">{departureTime || "ASAP"}</p>
+      <div className="absolute bottom-0 w-full px-4 pb-5 z-10">
+        <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-xl space-y-4">
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Your Trip</p>
           </div>
 
+          {/* Route info — pickup, destination, departs all on left */}
+          <div className="flex gap-3 items-stretch">
+            <div className="flex flex-col items-center gap-1 py-1">
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 flex-shrink-0" />
+              <div className="w-px flex-1 bg-gray-300" />
+              <div className="w-2.5 h-2.5 rounded-full bg-teal-600 flex-shrink-0" />
+            </div>
+            <div className="flex-1 space-y-3">
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Pickup</p>
+                <p className="text-sm font-semibold text-gray-800 leading-snug">{pickupName}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Destination</p>
+                <p className="text-sm font-semibold text-gray-800 leading-snug">{destinationName}</p>
+              </div>
+              {departureTime && (
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Departs</p>
+                  <p className="text-sm font-bold text-orange-500">{departureTime}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Passenger status */}
           <div className="pt-3 border-t border-gray-100">
             {!passengerJoined ? (
-              <>
-                <p className="font-medium text-sm text-gray-700">No passengers yet</p>
-                <p className="text-xs text-gray-400 mt-1">Searching nearby students{dots}</p>
-              </>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700">No passengers yet</p>
+                  <p className="text-xs text-gray-400">Searching nearby students{dots}</p>
+                </div>
+              </div>
             ) : (
-              <p className="font-semibold text-green-600 animate-pulse">
+              <p className="text-sm font-semibold text-green-600 animate-pulse">
                 ✓ Passenger found — redirecting…
               </p>
             )}
           </div>
 
-          <div className="flex gap-3 pt-1">
+          {/* Buttons */}
+          <div className="flex gap-3">
             <button onClick={() => setShowCancelPopup(true)}
-              className="flex-1 py-3 rounded-xl bg-gray-100 text-red-500 font-medium">
+              className="flex-1 py-3 rounded-xl bg-gray-100 text-red-500 font-semibold text-sm">
               Cancel Ride
             </button>
             <button disabled
-              className="flex-1 py-3 rounded-xl bg-blue-400/40 text-white font-medium cursor-not-allowed">
-              {passengerJoined ? "Confirmed!" : `Waiting${dots}`}
+              className="flex-1 py-3 rounded-xl bg-blue-400/40 text-blue-700 font-semibold text-sm cursor-not-allowed">
+              {passengerJoined ? "Confirmed!" : "Waiting"}
             </button>
           </div>
         </div>

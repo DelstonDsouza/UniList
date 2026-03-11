@@ -195,3 +195,23 @@
   font-weight: 600;
   letter-spacing: 0.5px;
 }
+
+
+/* ── LEAFLET CUSTOM THEME ── */
+.map-container {
+  height: 320px !important;
+  width: 100%;
+  position: relative;
+  z-index: 10;
+}
+
+.leaflet-container {
+  border-radius: 20px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.25) !important;
+  background-color: #1a1a1a !important; 
+}
+
+/* Hide zoom buttons globally */
+.leaflet-control-zoom {
+  display: none !important;
+}

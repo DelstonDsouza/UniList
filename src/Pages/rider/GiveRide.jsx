@@ -349,7 +349,11 @@ function GiveRide() {
               // whenCreated is deprecated in newer react-leaflet — use ref pattern
               ref={(map) => { if (map && !leafletMap) setLeafletMap(map) }}
             >
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <TileLayer
+                url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+                attribution="&copy; OpenStreetMap contributors"
+                maxZoom={20}
+              />
 
               {/* Map click handler as a proper child component */}
               <MapClickLayer onClick={onMapClick} />

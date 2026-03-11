@@ -283,11 +283,14 @@ export default function ActiveRidePanel() {
 
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
 
-        <div style={{ height: "48vh", width: "100%", flexShrink: 0, position: "relative" }}>
+        <div className="map-container flex-shrink-0">
           <MapContainer center={mapCenter} zoom={14}
             style={{ height: "100%", width: "100%" }} zoomControl={false}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+            <TileLayer
+              url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+              attribution="&copy; OpenStreetMap contributors"
+              maxZoom={20}
+            />
             {routeCoords.length > 1 && (
               <Polyline positions={routeCoords}
                 pathOptions={{ color: routeColor, weight: 5, opacity: 0.88 }} />
@@ -295,19 +298,20 @@ export default function ActiveRidePanel() {
             {routeCoords.length > 1 && <FitRoute coords={routeCoords} />}
             {riderPos && (
               <>
-                <PinLayer position={riderPos} color="#2563EB" emoji="🏍" label={activeRide.riderName || "Rider"} />
+                <PinLayer position={riderPos} color="black" emoji="🏍" label={activeRide.riderName || "Rider"} />
                 <AccuracyRing position={riderPos} />
               </>
             )}
             {destPin && (
               <PinLayer
                 position={destPin}
-                color={isOngoing ? "#dc2626" : "#16a34a"}
+                color={isOngoing ? "#dc2626" : "black"}
                 emoji={isOngoing ? "🎓" : "📍"}
                 label={isOngoing ? "College" : "Your Pickup"}
               />
             )}
           </MapContainer>
+
 
           <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
             <button onClick={() => setShowHelp(true)} style={{

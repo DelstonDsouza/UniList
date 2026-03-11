@@ -413,8 +413,11 @@ export default function RidePickup() {
         <div style={{ height: "48vh", width: "100%", flexShrink: 0, position: "relative" }}>
           <MapContainer center={mapCenter} zoom={14}
             style={{ height: "100%", width: "100%" }} zoomControl={false}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+            <TileLayer
+              url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+              attribution="&copy; OpenStreetMap contributors"
+              maxZoom={20}
+            />
             {routeCoords.length > 1 && (
               <Polyline positions={routeCoords}
                 pathOptions={{ color: routeColor, weight: 5, opacity: 0.88 }} />

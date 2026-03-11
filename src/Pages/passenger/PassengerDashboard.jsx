@@ -205,7 +205,7 @@ function Header({ firstName, fullName, showDropdown, setShowDropdown, dropdownRe
             <div className="border-t border-gray-100" />
             <button onClick={handleLogout}
               className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition">
-              <span>🚪</span> Logout
+              <span></span> Logout
             </button>
           </div>
         )}
@@ -585,6 +585,16 @@ export default function PassengerDashboard() {
   }
 
   const useCurrentLocation = () => {
+    // If context already has a live GPS location, use it immediately
+    if (userLocation) {
+      setPassengerLocation(userLocation)
+      reverseGeocode(userLocation[0], userLocation[1]).then(name => {
+        isUserTyping.current = false
+        setLocationName(name)
+      })
+      return
+    }
+
     if (!navigator.geolocation) return
     setLocationName("Fetching location…")
     navigator.geolocation.getCurrentPosition(
@@ -592,10 +602,11 @@ export default function PassengerDashboard() {
         const loc = [pos.coords.latitude, pos.coords.longitude]
         setPassengerLocation(loc)
         const name = await reverseGeocode(loc[0], loc[1])
-        isUserTyping.current = false; setLocationName(name)
+        isUserTyping.current = false
+        setLocationName(name)
       },
       () => { },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
     )
   }
 
@@ -668,21 +679,21 @@ export default function PassengerDashboard() {
   if (viewState === "completed") { resetToDiscovery(); return null }
   if (viewState === "fare_reveal") return (
     <div className="min-h-screen bg-gray-100 pb-24">
-      <Header {...headerProps} />
+
       <FareRevealSheet />
       <BottomNav tab={navTab} setTab={setNavTab} />
     </div>
   )
   if (viewState === "confirmed") return (
     <div className="min-h-screen bg-gray-100 pb-24">
-      <Header {...headerProps} />
+
       <UpcomingRide />
       <BottomNav tab={navTab} setTab={setNavTab} />
     </div>
   )
   if (viewState === "pickup_started" || viewState === "waiting" || viewState === "ongoing") return (
     <div className="min-h-screen bg-gray-100 pb-24 px-4 pt-4">
-      <Header {...headerProps} />
+
       <ActiveRidePanel />
       <BottomNav tab={navTab} setTab={setNavTab} />
     </div>
@@ -694,7 +705,7 @@ export default function PassengerDashboard() {
         <BeARiderModal onClose={() => setShowRiderModal(false)} onSubmit={handleRiderRegister} loading={riderRegLoading} />
       )}
 
-      <Header {...headerProps} />
+      {navTab === "home" && <Header {...headerProps} />}
 
       {/* ══════════════════ HOME TAB ══════════════════ */}
       {navTab === "home" && (
@@ -740,8 +751,7 @@ export default function PassengerDashboard() {
           </div>
 
           {/* Map */}
-          <div className="mx-4 rounded-3xl overflow-hidden shadow-sm relative"
-            style={{ height: showMapPicker ? 260 : 200, zIndex: 10 }}>
+          <div className="map-container mx-4 rounded-3xl overflow-hidden shadow-sm relative">
             {walkRide && (
               <div className="absolute top-2 left-2 z-[999] bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 shadow-sm border border-red-100 flex items-center gap-2">
                 <span className="w-4 h-0.5 bg-red-500 inline-block rounded" style={{ borderTop: "2px dashed #ef4444" }} />
@@ -750,10 +760,23 @@ export default function PassengerDashboard() {
             )}
             {mapCenter ? (
               <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
-                dragging zoomControl scrollWheelZoom doubleClickZoom>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
-                {passengerLocation && <Marker position={passengerLocation} />}
+                dragging zoomControl={false} scrollWheelZoom doubleClickZoom>
+                <TileLayer
+                  url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+                  attribution="&copy; OpenStreetMap contributors"
+                  maxZoom={20}
+                />
+                {passengerLocation && (
+                  <Marker 
+                    position={passengerLocation} 
+                    icon={L.divIcon({
+                      className: 'custom-pin',
+                      html: `<div style="background-color: black; width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"><div style="width: 10px; height: 10px; background-color: white; border-radius: 50%; transform: rotate(45deg);"></div></div>`,
+                      iconSize: [30, 30],
+                      iconAnchor: [15, 30]
+                    })} 
+                  />
+                )}
                 <RecenterMap position={passengerLocation} />
                 {showMapPicker && <MapClickHandler onPick={handleMapPick} />}
                 {walkRide && (
@@ -773,6 +796,7 @@ export default function PassengerDashboard() {
                   </>
                 )}
               </MapContainer>
+
             ) : (
               <div className="h-full flex flex-col items-center justify-center bg-slate-100 text-gray-400 text-sm gap-2">
                 <span className="text-3xl animate-bounce">📍</span>
@@ -932,7 +956,33 @@ export default function PassengerDashboard() {
         <div className="px-4 pt-5 pb-8">
           <h2 className="text-lg font-bold text-gray-900 mb-4">Account</h2>
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 relative">
+              {/* Edit Button in Top Right */}
+              {!editMode ? (
+                <button
+                  onClick={() => { setEditMode(true); setEditEmail(passengerProfile?.email || "") }}
+                  className="absolute top-4 right-4 p-2 text-teal-600 hover:bg-teal-50 rounded-full transition"
+                  title="Edit Email"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              ) : (
+                <div className="absolute top-4 right-4 flex gap-1">
+                  <button onClick={handleEditSave} disabled={editLoading} className="p-2 text-green-600 hover:bg-green-50 rounded-full transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </button>
+                  <button onClick={() => { setEditMode(false); setEditMsg("") }} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center gap-4 mb-4">
                 <Avatar name={fullName || firstName} size="lg" />
                 <div>
@@ -940,9 +990,28 @@ export default function PassengerDashboard() {
                   <p className="text-xs text-teal-600 font-medium mt-0.5">Passenger</p>
                 </div>
               </div>
+
               <div className="space-y-3">
                 <InfoRow icon="🎓" label="University ID" value={passengerProfile?.universityId} />
-                <InfoRow icon="📧" label="Email" value={passengerProfile?.email} />
+                {editMode ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-base w-5 text-center">📧</span>
+                    <div className="flex-1">
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Email (Editable)</p>
+                      <input
+                        type="email"
+                        value={editEmail}
+                        onChange={e => setEditEmail(e.target.value)}
+                        className="w-full bg-gray-50 border-b border-teal-200 py-1 text-sm focus:outline-none focus:border-teal-500 transition-colors"
+                        autoFocus
+                        placeholder="your@email.com"
+                      />
+                      {editMsg && <p className={`text-[10px] mt-1 ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>{editMsg}</p>}
+                    </div>
+                  </div>
+                ) : (
+                  <InfoRow icon="📧" label="Email" value={passengerProfile?.email} />
+                )}
                 <InfoRow icon="📱" label="Phone" value={passengerProfile?.phone || storedUser?.phone} />
                 <InfoRow icon="⚥" label="Gender" value={passengerProfile?.gender} />
               </div>
@@ -951,52 +1020,25 @@ export default function PassengerDashboard() {
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <p className="text-sm font-bold text-gray-700 mb-3">Ride Statistics</p>
               <div className="grid grid-cols-3 gap-3">
-                <StatBox label="Total Rides" value={passengerProfile?.totalRides ?? history.length ?? "—"} />
-                <StatBox label="Total Spent" value={passengerProfile?.totalSpent ? `₹${passengerProfile.totalSpent}` : "—"} />
+                <StatBox label="Total Rides" value={passengerProfile?.totalRides ?? "—"} />
+                <StatBox label="Total Spent" value={passengerProfile?.totalSpent !== undefined ? `₹${passengerProfile.totalSpent}` : "—"} />
                 <StatBox label="Rating" value={passengerProfile?.rating ? `${passengerProfile.rating} ⭐` : "—"} />
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <p className="text-sm font-bold text-gray-700 mb-3">Edit Profile</p>
-              {editMode ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">New Email</label>
-                    <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)}
-                      placeholder="your@email.com"
-                      className="w-full bg-gray-100 p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                  </div>
-                  {editMsg && (
-                    <p className={`text-xs ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>{editMsg}</p>
-                  )}
-                  <div className="flex gap-2">
-                    <button onClick={() => { setEditMode(false); setEditMsg("") }}
-                      className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
-                      Cancel
-                    </button>
-                    <button onClick={handleEditSave} disabled={editLoading}
-                      className="flex-1 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition">
-                      {editLoading ? "Saving…" : "Save"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => { setEditMode(true); setEditEmail(passengerProfile?.email || "") }}
-                  className="w-full py-2.5 rounded-xl border border-teal-500 text-teal-600 text-sm font-medium hover:bg-teal-50 transition">
-                  ✏️ Edit Email
-                </button>
-              )}
-            </div>
+            <div className="space-y-3 pt-2">
+              <button onClick={() => setShowRiderModal(true)}
+                className="w-full py-3 rounded-2xl bg-teal-50 border border-teal-200 text-teal-700 font-semibold text-sm hover:bg-teal-100 transition">
+                🛵 Become a Rider
+              </button>
 
-            <button onClick={() => setShowRiderModal(true)}
-              className="w-full py-3 rounded-2xl bg-teal-50 border border-teal-200 text-teal-700 font-semibold text-sm hover:bg-teal-100 transition">
-              🛵 Become a Rider
-            </button>
-            <button onClick={handleLogout}
-              className="w-full py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 font-semibold text-sm hover:bg-red-100 transition">
-              🚪 Logout
-            </button>
+              <div className="flex justify-center">
+                <button onClick={handleLogout}
+                  className="px-8 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-500 font-semibold text-sm hover:bg-red-100 transition inline-flex items-center gap-2">
+                  <span></span> Logout
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

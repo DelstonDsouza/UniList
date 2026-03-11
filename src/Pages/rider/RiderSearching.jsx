@@ -53,6 +53,7 @@ export default function RiderSearching() {
     riderName,
     riderPhone,
     scooterNumber,
+    pickupAddress,
   } = location.state || {}
 
   const currentGps = liveGpsLocation || userLocation
@@ -97,6 +98,7 @@ export default function RiderSearching() {
             pickupLng:       userLocation[1],
             departureTime:   departureTimeRaw || null,
             departureTimeStr: departureTime   || "",  // ← formatted "3:10 AM"
+            pickupAddress:   pickupAddress    || "",
           }),
         })
 
@@ -134,7 +136,11 @@ export default function RiderSearching() {
   return (
     <div className="min-h-screen bg-gray-100">
       <MapContainer center={userLocation} zoom={13} style={{ height: "65vh", width: "100%" }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer
+          url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+          attribution="&copy; OpenStreetMap contributors"
+          maxZoom={20}
+        />
         <Marker position={userLocation} />
         <Marker position={collegeLocation} />
         <RoutePolyline from={userLocation} to={collegeLocation} />

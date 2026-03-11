@@ -181,8 +181,11 @@ export default function RideConfirmed() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div style={{ height: "52vh", width: "100%", flexShrink: 0 }}>
         <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
+          <TileLayer
+            url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+            attribution="&copy; OpenStreetMap contributors"
+            maxZoom={20}
+          />
           <RoutePolyline waypoints={waypoints} />
           {userLocation && <PinMarker position={userLocation} color="#2563EB" emoji="🏍" label="You" />}
           {passengerPickup && <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />}
