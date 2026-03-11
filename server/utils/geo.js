@@ -155,16 +155,26 @@ export function nearestPointOnRoute(routePoints, passengerLat, passengerLng) {
   }
 }
 
-/**
- * Reverse geocode a coordinate to a human-readable address string.
- * Produces: "Road, Suburb, City" like "Devarapadau Cross Rd, Vamanjoor, Mangalore"
- */
+const geoCache = new Map()
+
 export async function reverseGeocode(lat, lng) {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`
+  if (geoCache.has(key)) return geoCache.get(key)
+
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
-      { headers: { "User-Agent": "RideMateApp/1.0", "Accept-Language": "en" }, signal: AbortSignal.timeout(6000) }
+      {
+        headers: { "User-Agent": "RideMateApp/1.1", "Accept-Language": "en" },
+        signal: AbortSignal.timeout(5000)
+      }
     )
+
+    if (res.status === 429) {
+      console.warn("Nominatim rate limit hit")
+      return `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+    }
+
     const data = await res.json()
     const a = data?.address || {}
 
@@ -173,13 +183,18 @@ export async function reverseGeocode(lat, lng) {
     const city = a.city || a.town || a.city_district || a.county || ""
 
     const parts = [road, area, city].filter(Boolean)
-    if (parts.length >= 2) return parts.join(", ")
-    if (parts.length === 1) return parts[0]
+    let result = ""
+    if (parts.length >= 2) result = parts.join(", ")
+    else if (parts.length === 1) result = parts[0]
+    else {
+      const fallback = data?.display_name?.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3).join(", ")
+      result = fallback || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+    }
 
-    // Fallback: first 3 segments of display_name
-    const fallback = data?.display_name?.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3).join(", ")
-    return fallback || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
-  } catch {
+    geoCache.set(key, result)
+    return result
+  } catch (err) {
+    console.error("Reverse geocode error:", err.message)
     return `${lat.toFixed(4)}, ${lng.toFixed(4)}`
   }
 }

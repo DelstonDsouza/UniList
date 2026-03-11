@@ -44,6 +44,7 @@ const RideSchema = new mongoose.Schema(
       lat: { type: Number, default: null },
       lng: { type: Number, default: null },
     },
+    pickupAddress: { type: String, default: "" },
 
     departureTime: { type: String, default: "" },
     departureTimeStr: { type: String, default: "" },

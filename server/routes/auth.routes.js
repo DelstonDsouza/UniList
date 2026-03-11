@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken"
 import { JWT_SECRET } from "../config/env.js"
 import User from "../models/User.js"
 import Student from "../models/Student.js"
+import Ride from "../models/Ride.js"
 
 const router = Router()
 
@@ -118,8 +119,34 @@ router.get("/me", async (req, res) => {
     const user = await User.findById(decoded.uid)
     if (!user) return res.status(404).json({ detail: "User not found" })
 
+    let totalEarnings = 0 // for riders
+    let totalSpent = 0    // for passengers
+    let totalRides = 0
+
+    if (user.isRider) {
+      const stats = await Ride.aggregate([
+        { $match: { riderId: user._id, status: "completed" } },
+        { $group: { _id: null, totalEarnings: { $sum: "$fare.amount" }, count: { $sum: 1 } } }
+      ])
+      if (stats.length > 0) {
+        totalEarnings = stats[0].totalEarnings
+        totalRides = stats[0].count
+      }
+    } else {
+      // Passenger stats
+      const stats = await Ride.aggregate([
+        { $match: { "passenger.userId": user._id, status: "completed" } },
+        { $group: { _id: null, totalSpent: { $sum: "$fare.amount" }, count: { $sum: 1 } } }
+      ])
+      if (stats.length > 0) {
+        totalSpent = stats[0].totalSpent
+        totalRides = stats[0].count
+      }
+    }
+
     return res.json({
       user: {
+        _id:          String(user._id),
         uid:          String(user._id),
         firebaseUid:  user.firebaseUid,
         firstName:    user.firstName,
@@ -130,9 +157,12 @@ router.get("/me", async (req, res) => {
         universityId: user.universityId,
         isRider:      user.isRider,
         role:         user.role,
-        avgRating:    user.ratingCount > 0
-                        ? (user.ratingSum / user.ratingCount).toFixed(1)
-                        : null,
+        rating:       user.isRider
+                        ? (user.ratingCount > 0 ? (user.ratingSum/user.ratingCount).toFixed(1) : null)
+                        : (user.passengerRatingCount > 0 ? (user.passengerRatingSum/user.passengerRatingCount).toFixed(1) : null),
+        totalEarnings,
+        totalSpent,
+        totalRides,
       }
     })
   } catch {

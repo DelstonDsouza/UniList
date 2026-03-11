@@ -106,7 +106,7 @@ router.get("/history", auth, wrap(async (req, res) => {
       distanceKm: r.fare?.distanceKm ?? null,
       departureTime: r.departureTimeStr || r.departureTime || null,
       createdAt: r.createdAt,
-      pickupLocation: pickupLocation || riderPickupLocation,
+      pickupLocation: r.pickupAddress || pickupLocation || riderPickupLocation || "Unknown Location",
       destination: "St Aloysius College, Mangalore",
       passengerReview: r.passengerReview || null,
       riderReview: r.riderReview || null,
@@ -122,7 +122,7 @@ router.post("/", auth, wrap(async (req, res) => {
   const {
     riderName, riderPhone, scooterNumber,
     pickupLat, pickupLng, currentLat, currentLng,
-    departureTime, departureTimeStr,
+    departureTime, departureTimeStr, pickupAddress
   } = req.body
 
   if (!pickupLat || !pickupLng || !currentLat || !currentLng) return res.status(400).json({
@@ -162,6 +162,7 @@ router.post("/", auth, wrap(async (req, res) => {
       type: "Point",
       coordinates: [parseFloat(pickupLng), parseFloat(pickupLat)],
     },
+    pickupAddress: pickupAddress || "",
     status: "pending",
   })
 
