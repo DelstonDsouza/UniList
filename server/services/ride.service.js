@@ -161,10 +161,12 @@ export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
 
   const { km, fare } = calculateFare(lat, lng)
   const otp = generateOTP()
+  const pAddress = await reverseGeocode(lat, lng)
 
   ride.passenger = {
     userId, name, phone,
     location: { type: "Point", coordinates: [lng, lat] },
+    pickupAddress: pAddress,
   }
   ride.fare = { distanceKm: km, amount: fare, calculatedAt: new Date() }
   ride.otp = otp

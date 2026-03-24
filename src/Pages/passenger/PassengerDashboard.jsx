@@ -171,12 +171,12 @@ function NavTab({ icon, label, active, onClick }) {
   )
 }
 
-function BottomNav({ tab, setTab }) {
+function BottomNav({ navTab, setNavTab }) {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">
-      <NavTab icon="🏠" label="Home" active={tab === "home"} onClick={() => setTab("home")} />
-      <NavTab icon="📋" label="History" active={tab === "history"} onClick={() => setTab("history")} />
-      <NavTab icon="👤" label="Account" active={tab === "account"} onClick={() => setTab("account")} />
+      <NavTab icon="🏠" label="Home" active={navTab === "home"} onClick={() => setNavTab("home")} />
+      <NavTab icon="📋" label="History" active={navTab === "history"} onClick={() => setNavTab("history")} />
+      <NavTab icon="👤" label="Profile" active={navTab === "account"} onClick={() => setNavTab("account")} />
     </div>
   )
 }
@@ -677,27 +677,19 @@ export default function PassengerDashboard() {
   // ── View state routing ─────────────────────────────────────────────────────
   // If completed, immediately reset to discovery (rating was already done on PassengerPayment page)
   if (viewState === "completed") { resetToDiscovery(); return null }
-  if (viewState === "fare_reveal") return (
-    <div className="min-h-screen bg-gray-100 pb-24">
 
-      <FareRevealSheet />
-      <BottomNav tab={navTab} setTab={setNavTab} />
-    </div>
-  )
-  if (viewState === "confirmed") return (
-    <div className="min-h-screen bg-gray-100 pb-24">
+  // Auto-switch to "ride" tab when viewState fundamentally changes
+  useEffect(() => {
+    if (["confirmed", "pickup_started", "waiting", "ongoing", "fare_reveal"].includes(viewState)) {
+      setNavTab("ride")
+    }
+  }, [viewState])
 
-      <UpcomingRide />
-      <BottomNav tab={navTab} setTab={setNavTab} />
-    </div>
-  )
-  if (viewState === "pickup_started" || viewState === "waiting" || viewState === "ongoing") return (
-    <div className="min-h-screen bg-gray-100 pb-24 px-4 pt-4">
-
-      <ActiveRidePanel />
-      <BottomNav tab={navTab} setTab={setNavTab} />
-    </div>
-  )
+  const renderRideView = () => {
+    if (viewState === "fare_reveal") return <FareRevealSheet />
+    if (viewState === "confirmed") return <UpcomingRide />
+    return <ActiveRidePanel />
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 pb-24">
@@ -707,10 +699,37 @@ export default function PassengerDashboard() {
 
       {navTab === "home" && <Header {...headerProps} />}
 
+      {/* ══════════════════ SUMMARY TABS ══════════════════ */}
+      {navTab === "ride" && (
+        <div className="px-4 pt-4">
+          {renderRideView()}
+        </div>
+      )}
+
       {/* ══════════════════ HOME TAB ══════════════════ */}
       {navTab === "home" && (
         <>
-          {/* Location picker */}
+          {["confirmed", "pickup_started", "waiting", "ongoing"].includes(viewState) ? (
+            <div className="mx-4 mt-6">
+              <div 
+                onClick={() => setNavTab("ride")}
+                className="bg-teal-600 text-white rounded-3xl p-5 shadow-lg border border-teal-500 cursor-pointer hover:bg-teal-700 transition flex flex-col gap-3 relative overflow-hidden"
+              >
+                <div className="absolute -right-4 -top-4 text-7xl opacity-10">🚗</div>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-xl font-extrabold mb-1">Ongoing Ride</h2>
+                    <p className="text-teal-100 text-sm font-medium">Tap to view your ride details</p>
+                  </div>
+                  <div className="bg-white text-teal-600 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg shadow-sm">
+                    ➔
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Location picker */}
           <div className="mx-4 mt-4 mb-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3">
               <p className="text-xs text-gray-400 font-medium mb-2">Your pickup location</p>
@@ -767,14 +786,14 @@ export default function PassengerDashboard() {
                   maxZoom={20}
                 />
                 {passengerLocation && (
-                  <Marker 
-                    position={passengerLocation} 
+                  <Marker
+                    position={passengerLocation}
                     icon={L.divIcon({
                       className: 'custom-pin',
                       html: `<div style="background-color: black; width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"><div style="width: 10px; height: 10px; background-color: white; border-radius: 50%; transform: rotate(45deg);"></div></div>`,
                       iconSize: [30, 30],
                       iconAnchor: [15, 30]
-                    })} 
+                    })}
                   />
                 )}
                 <RecenterMap position={passengerLocation} />
@@ -880,6 +899,8 @@ export default function PassengerDashboard() {
             </div>
           </div>
         </>
+        )}
+      </>
       )}
 
       {/* ══════════════════ HISTORY TAB ══════════════════ */}

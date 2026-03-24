@@ -84,18 +84,28 @@ router.get("/history", auth, wrap(async (req, res) => {
 
   const rides = await Ride.find(query).sort({ createdAt: -1 }).limit(30).lean()
 
-  // Reverse-geocode pickup coord for display using shared utility
+  // Reverse-geocode pickup coord ONLY if missing, to prevent rate limits
   const formatted = await Promise.all(rides.map(async r => {
-    const coords = r.passenger?.location?.coordinates // [lng, lat]
-    const pickupLocation = coords?.[0] && coords?.[1]
-      ? await reverseGeocode(coords[1], coords[0])  // reverseGeocode(lat, lng)
-      : null
+    let finalPickupLocation = r.pickupAddress
 
-    // For rider history, also geocode their pickup location
-    const riderPickupCoords = r.pickupLocation?.coordinates // [lng, lat]
-    const riderPickupLocation = riderPickupCoords?.[0] && riderPickupCoords?.[1]
-      ? await reverseGeocode(riderPickupCoords[1], riderPickupCoords[0])
-      : null
+    if (!finalPickupLocation) {
+      if (r.passenger?.pickupAddress) {
+        finalPickupLocation = r.passenger.pickupAddress
+      } else {
+        const coords = r.passenger?.location?.coordinates
+        if (coords?.[0] && coords?.[1]) {
+          finalPickupLocation = await reverseGeocode(coords[1], coords[0])
+          // Fire-and-forget save so next load is instant
+          Ride.updateOne({ _id: r._id }, { $set: { "passenger.pickupAddress": finalPickupLocation } }).exec().catch(() => {})
+        } else {
+          const rCoords = r.pickupLocation?.coordinates
+          if (rCoords?.[0] && rCoords?.[1]) {
+            finalPickupLocation = await reverseGeocode(rCoords[1], rCoords[0])
+            Ride.updateOne({ _id: r._id }, { $set: { pickupAddress: finalPickupLocation } }).exec().catch(() => {})
+          }
+        }
+      }
+    }
 
     return {
       _id: r._id,
@@ -106,7 +116,7 @@ router.get("/history", auth, wrap(async (req, res) => {
       distanceKm: r.fare?.distanceKm ?? null,
       departureTime: r.departureTimeStr || r.departureTime || null,
       createdAt: r.createdAt,
-      pickupLocation: r.pickupAddress || pickupLocation || riderPickupLocation || "Unknown Location",
+      pickupLocation: finalPickupLocation || "Unknown Location",
       destination: "St Aloysius College, Mangalore",
       passengerReview: r.passengerReview || null,
       riderReview: r.riderReview || null,

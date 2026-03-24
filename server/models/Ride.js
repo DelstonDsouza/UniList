@@ -16,6 +16,7 @@ const PassengerSchema = new mongoose.Schema(
     name: { type: String, default: "" },
     phone: { type: String, default: "" },
     location: { type: GeoPointSchema, default: null },
+    pickupAddress: { type: String, default: "" },
   },
   { _id: false }
 )

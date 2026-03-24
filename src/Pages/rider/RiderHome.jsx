@@ -173,6 +173,31 @@ export default function RiderHome() {
     navigate("/login", { replace: true })
   }
 
+  // ── Active Ride ───────────────────────────────────────────────────────────
+  const [activeRide, setActiveRide] = useState(null)
+  const [activeRideLoad, setActiveRideLoad] = useState(false)
+
+  useEffect(() => {
+    if (tab !== "home" || !profile) return
+    setActiveRideLoad(true)
+    apiFetch("/rides/my")
+      .then(data => {
+        const rides = data?.data?.rides || []
+        if (rides.length > 0) {
+          const latest = rides[0]
+          if (["pending", "locked", "pickup_started", "ongoing"].includes(latest.status)) {
+            setActiveRide(latest)
+          } else {
+            setActiveRide(null)
+          }
+        } else {
+          setActiveRide(null)
+        }
+      })
+      .catch(() => { })
+      .finally(() => setActiveRideLoad(false))
+  }, [tab, profile])
+
   // ── History ───────────────────────────────────────────────────────────────
   const [history, setHistory] = useState([])
   const [historyLoad, setHistoryLoad] = useState(false)
@@ -190,6 +215,17 @@ export default function RiderHome() {
   }, [tab, profile])
 
   // ── Saved rides ───────────────────────────────────────────────────────────
+  const [saveNotification, setSaveNotification] = useState("")
+  const saveNotifTimer = useRef(null)
+
+  const showSaveNotification = (msg) => {
+    setSaveNotification(msg)
+    if (saveNotifTimer.current) clearTimeout(saveNotifTimer.current)
+    saveNotifTimer.current = setTimeout(() => {
+      setSaveNotification("")
+    }, 2500)
+  }
+
   const [savedRides, setSavedRides] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("savedRides") || "[]")
@@ -203,12 +239,28 @@ export default function RiderHome() {
     if (saved.departureTime) setDepartureTime(saved.departureTime)
     // Destination is fixed as collegeName in this app
     setTab("home")
-    toast.success(`Loaded saved ride from ${saved.pickupName || "saved location"}`)
   }
+
+  const isCurrentRideSaved = () => pinCoords && savedRides.some(r =>
+    r.pickupLat === pinCoords[0] &&
+    r.pickupLng === pinCoords[1] &&
+    r.departureTime === departureTime
+  )
 
   const saveCurrentRide = () => {
     if (!pinCoords) {
-      toast.error("Please select a pickup location first")
+      showSaveNotification("Please select a pickup location first")
+      return
+    }
+    if (isCurrentRideSaved()) {
+      const updated = savedRides.filter(r => !(
+        r.pickupLat === pinCoords[0] &&
+        r.pickupLng === pinCoords[1] &&
+        r.departureTime === departureTime
+      ))
+      setSavedRides(updated)
+      localStorage.setItem("savedRides", JSON.stringify(updated))
+      showSaveNotification("Ride removed from saved list")
       return
     }
     const newSaved = {
@@ -223,7 +275,7 @@ export default function RiderHome() {
     const updated = [newSaved, ...savedRides].slice(0, 5) // limit to 5
     setSavedRides(updated)
     localStorage.setItem("savedRides", JSON.stringify(updated))
-    toast.success("Ride saved to your bookmarks!")
+    showSaveNotification("Ride saved!")
   }
 
   const deleteSavedRide = (id) => {
@@ -438,7 +490,14 @@ export default function RiderHome() {
 
   // ────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20 relative">
+
+      {/* ── SAVE NOTIFICATION ── */}
+      {saveNotification && (
+        <div className="fixed top-[65%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-[9999] bg-black/80 text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-medium animate-fade-in-up">
+          {saveNotification}
+        </div>
+      )}
 
       {/* ── TOP HEADER ── */}
       {tab === "home" && (
@@ -459,9 +518,14 @@ export default function RiderHome() {
                   <span>👤</span> View Profile
                 </button>
                 <div className="border-t border-gray-100" />
+                <button onClick={() => { setShowDropdown(false); navigate("/dashboard") }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition">
+                  <span>🚗</span> Switch to Passenger
+                </button>
+                <div className="border-t border-gray-100" />
                 <button onClick={handleLogout}
                   className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition">
-                  <span></span> Logout
+                  <span>🚪</span> Logout
                 </button>
               </div>
             )}
@@ -540,102 +604,147 @@ export default function RiderHome() {
               </div>
             )}
           </div>
-          {/* POST RIDE CARD */}
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 px-5 py-5 space-y-3">
+          {/* POST RIDE CARD OR ONGOING RIDE CARD */}
+          {activeRideLoad ? (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex justify-center">
+              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : activeRide ? (
+            <div
+              onClick={() => {
+                const collegeLocation = activeRide.collegeDestination?.lat ? [activeRide.collegeDestination.lat, activeRide.collegeDestination.lng] : [12.872109642876621, 74.84534749009204]
+                const userLocation = activeRide.currentLocation?.coordinates ? [activeRide.currentLocation.coordinates[1], activeRide.currentLocation.coordinates[0]] : null
 
-            <h2 className="text-base font-bold text-gray-900">Post a Ride</h2>
+                const navState = {
+                  rideId: activeRide._id,
+                  userLocation,
+                  collegeLocation,
+                  departureTime: activeRide.departureTimeStr || activeRide.departureTime,
+                  passengerName: activeRide.passenger?.name || "Passenger",
+                  passengerPhone: activeRide.passenger?.phone || "",
+                  passengerLat: activeRide.passenger?.location?.coordinates?.[1],
+                  passengerLng: activeRide.passenger?.location?.coordinates?.[0],
+                  fare: activeRide.fare?.amount,
+                  distanceKm: activeRide.fare?.distanceKm,
+                  passengerPickup: activeRide.passenger?.location?.coordinates ? [activeRide.passenger.location.coordinates[1], activeRide.passenger.location.coordinates[0]] : null,
+                }
 
-            {/* Route block — From / To stacked */}
-            <div className="relative bg-gray-50 rounded-2xl border border-gray-100">
-
-              {/* FROM */}
-              <div className="flex items-center gap-3 px-4 py-3.5">
-                <div className="w-3 h-3 rounded-full border-2 border-teal-500 bg-white flex-shrink-0" />
-                <div className="flex-1 relative" ref={dropRef}>
-                  <input type="text" value={locationName}
-                    onChange={(e) => { isUserTyping.current = true; setLocationName(e.target.value); setLocError(false) }}
-                    onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
-                    placeholder="Your pickup location…"
-                    className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
-                  />
-                  {loadingSugg && <span className="absolute right-0 top-0 text-gray-400 animate-spin">⟳</span>}
-                  {showDrop && suggestions.length > 0 && (
-                    <ul className="absolute z-50 left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
-                      {suggestions.map((s, i) => (
-                        <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
-                          <button type="button" onMouseDown={() => selectSuggestion(s)}
-                            className="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
-                            <span className="block font-medium text-sm text-gray-800">{s.short}</span>
-                            <span className="block text-xs text-gray-400 truncate">{s.label}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                if (activeRide.status === "pending") navigate(`/rider-wait/${activeRide._id}`, { state: navState })
+                else if (activeRide.status === "locked") navigate("/ride-confirmed", { state: navState })
+                else navigate("/ride-pickup", { state: navState })
+              }}
+              className="bg-teal-600 text-white rounded-3xl p-5 shadow-lg border border-teal-500 cursor-pointer hover:bg-teal-700 transition flex flex-col gap-3 relative overflow-hidden"
+            >
+              <div className="absolute -right-4 -top-4 text-7xl opacity-10">🚗</div>
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl font-extrabold mb-1">Ongoing Ride</h2>
+                  <p className="text-teal-100 text-sm font-medium">Tap to view your ride details</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={saveCurrentRide} title="Save this ride"
-                    className="text-gray-400 hover:text-teal-600 flex-shrink-0 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                    </svg>
-                  </button>
-                  <button type="button" onClick={useCurrentLocation} title="Use current location"
-                    className="text-teal-500 hover:text-teal-700 flex-shrink-0 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <circle cx="12" cy="12" r="3" /><path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
-                    </svg>
-                  </button>
+                <div className="bg-white text-teal-600 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg shadow-sm">
+                  ➔
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 px-5 py-5 space-y-3">
+
+              <h2 className="text-base font-bold text-gray-900">Post a Ride</h2>
+
+              {/* Route block — From / To stacked */}
+              <div className="relative bg-gray-50 rounded-2xl border border-gray-100">
+
+                {/* FROM */}
+                <div className="flex items-center gap-3 px-4 py-3.5">
+                  <div className="w-3 h-3 rounded-full border-2 border-teal-500 bg-white flex-shrink-0" />
+                  <div className="flex-1 relative" ref={dropRef}>
+                    <input type="text" value={locationName}
+                      onChange={(e) => { isUserTyping.current = true; setLocationName(e.target.value); setLocError(false) }}
+                      onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
+                      placeholder="Your pickup location…"
+                      className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
+                    />
+                    {loadingSugg && <span className="absolute right-0 top-0 text-gray-400 animate-spin">⟳</span>}
+                    {showDrop && suggestions.length > 0 && (
+                      <ul className="absolute z-50 left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+                        {suggestions.map((s, i) => (
+                          <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
+                            <button type="button" onMouseDown={() => selectSuggestion(s)}
+                              className="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
+                              <span className="block font-medium text-sm text-gray-800">{s.short}</span>
+                              <span className="block text-xs text-gray-400 truncate">{s.label}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={saveCurrentRide} title={isCurrentRideSaved() ? "Ride saved" : "Save this ride"}
+                      className={`flex-shrink-0 transition ${isCurrentRideSaved() ? 'text-teal-600' : 'text-gray-400 hover:text-teal-600'}`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill={isCurrentRideSaved() ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                    </button>
+                    <button type="button" onClick={useCurrentLocation} title="Use current location"
+                      className="text-teal-500 hover:text-teal-700 flex-shrink-0 transition">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <circle cx="12" cy="12" r="3" /><path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Divider with dashed line */}
+                <div className="flex items-center gap-3 px-4">
+                  <div className="w-3 flex justify-center">
+                    <div className="w-px h-4 border-l-2 border-dashed border-gray-300" />
+                  </div>
+                  <div className="flex-1 border-t border-dashed border-gray-200" />
+                </div>
+
+                {/* TO */}
+                <div className="flex items-center gap-3 px-4 py-3.5">
+                  <div className="w-3 h-3 rounded-sm bg-red-400 flex-shrink-0" />
+                  <p className="text-sm text-gray-500 font-medium flex-1">{collegeName}</p>
                 </div>
               </div>
 
-              {/* Divider with dashed line */}
-              <div className="flex items-center gap-3 px-4">
-                <div className="w-3 flex justify-center">
-                  <div className="w-px h-4 border-l-2 border-dashed border-gray-300" />
-                </div>
-                <div className="flex-1 border-t border-dashed border-gray-200" />
+              {locError && <p className="text-red-500 text-xs">⚠ Could not determine your location.</p>}
+
+              {/* Departure time */}
+              <div className="flex items-center gap-3 bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3.5">
+                <span className="text-gray-400">🕐</span>
+                <input type="time" value={departureTime} min={getMinTime()}
+                  onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
+                  className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none"
+                />
+              </div>
+              {timeError && <p className="text-red-500 text-xs">⚠ Please select a valid future departure time.</p>}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-1">
+                <button onClick={handleSearch}
+                  className="flex-1 py-3 rounded-xl bg-gray-900 hover:bg-gray-700 active:scale-95 text-white text-sm font-semibold transition">
+                  Search for Passenger
+                </button>
+                <button
+                  onClick={() => {
+                    const saved = JSON.parse(localStorage.getItem("savedRides") || "[]")
+                    setSavedRides(Array.isArray(saved) ? saved : [])
+                    setTab("saved")
+                  }}
+                  className="px-4 py-3 rounded-xl border border-teal-200 bg-teal-50 text-teal-700 text-sm font-semibold hover:bg-teal-100 transition whitespace-nowrap"
+                  title="View saved rides"
+                >
+                  Saved
+                </button>
               </div>
 
-              {/* TO */}
-              <div className="flex items-center gap-3 px-4 py-3.5">
-                <div className="w-3 h-3 rounded-sm bg-red-400 flex-shrink-0" />
-                <p className="text-sm text-gray-500 font-medium flex-1">{collegeName}</p>
-              </div>
             </div>
+          )}
 
-            {locError && <p className="text-red-500 text-xs">⚠ Could not determine your location.</p>}
 
-            {/* Departure time */}
-            <div className="flex items-center gap-3 bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3.5">
-              <span className="text-gray-400">🕐</span>
-              <input type="time" value={departureTime} min={getMinTime()}
-                onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
-                className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none"
-              />
-            </div>
-            {timeError && <p className="text-red-500 text-xs">⚠ Please select a valid future departure time.</p>}
-
-            {/* Actions */}
-            <div className="flex gap-3 pt-1">
-              <button onClick={handleSearch}
-                className="flex-1 py-3 rounded-xl bg-gray-900 hover:bg-gray-700 active:scale-95 text-white text-sm font-semibold transition">
-                Search for Passenger
-              </button>
-              <button
-                onClick={() => {
-                  const saved = JSON.parse(localStorage.getItem("savedRides") || "[]")
-                  setSavedRides(Array.isArray(saved) ? saved : [])
-                  setTab("saved")
-                }}
-                className="px-4 py-3 rounded-xl border border-teal-200 bg-teal-50 text-teal-700 text-sm font-semibold hover:bg-teal-100 transition whitespace-nowrap"
-                title="View saved rides"
-              >
-                Saved
-              </button>
-            </div>
-
-          </div>
         </div>
       )}
 
@@ -773,10 +882,14 @@ export default function RiderHome() {
                 </div>
               </div>
 
-              <div className="flex justify-center pt-2">
+              <div className="flex flex-col gap-3 justify-center pt-2">
+                <button onClick={() => navigate("/dashboard")}
+                  className="px-8 py-2.5 rounded-xl bg-teal-50 border border-teal-400 text-teal-700 font-semibold text-sm hover:bg-teal-100 transition inline-flex justify-center items-center gap-2 w-full max-w-[260px] mx-auto">
+                  <span>🚗</span> Switch to Passenger
+                </button>
                 <button onClick={handleLogout}
-                  className="px-8 py-2.5 rounded-xl bg-red-50 border border-red-400 text-red-600 font-semibold text-sm hover:bg-red-100 transition inline-flex items-center gap-2">
-                  <span></span> Logout
+                  className="px-8 py-2.5 rounded-xl bg-red-50 border border-red-400 text-red-600 font-semibold text-sm hover:bg-red-100 transition inline-flex justify-center items-center gap-2 w-full max-w-[260px] mx-auto">
+                  <span>🚪</span> Logout
                 </button>
               </div>
             </div>
@@ -866,7 +979,7 @@ export default function RiderHome() {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">
         <NavTab icon="🏠" label="Home" active={tab === "home"} onClick={() => setTab("home")} />
         <NavTab icon="📋" label="History" active={tab === "history"} onClick={() => setTab("history")} />
-        <NavTab icon="👤" label="Account" active={tab === "account"} onClick={() => setTab("account")} />
+        <NavTab icon="👤" label="Profile" active={tab === "account"} onClick={() => setTab("account")} />
       </div>
     </div>
   )
