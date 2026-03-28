@@ -1,5 +1,3 @@
-// src/pages/rider/RiderHome.jsx
-
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import { useEffect, useRef, useState, useCallback } from "react"
@@ -8,6 +6,9 @@ import { signOut } from "firebase/auth"
 import { auth } from "../../config/firebase"
 import { apiFetch } from "../../services/api"
 import toast from "react-hot-toast"
+import { Compass, Clock, User } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { useRide } from "../../context/RideContext"
 
 import L from "leaflet"
 delete L.Icon.Default.prototype._getIconUrl
@@ -121,15 +122,14 @@ function StatusBadge({ status }) {
   )
 }
 
-// ── Avatar initials ──────────────────────────────────────────────────────────
-function Avatar({ name, size = "md" }) {
+function Avatar({ name, size = "md", src }) {
   const initials = name
     ? name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
     : "R"
-  const sz = size === "lg" ? "w-16 h-16 text-xl" : "w-9 h-9 text-sm"
+  const sz = size === "lg" ? "w-16 h-16 text-xl" : "w-10 h-10 text-sm"
   return (
-    <div className={`${sz} rounded-full bg-teal-600 flex items-center justify-center text-white font-bold flex-shrink-0`}>
-      {initials}
+    <div className={`${sz} rounded-full bg-teal-50 border-2 border-white flex items-center justify-center text-teal-600 font-bold flex-shrink-0 shadow-sm overflow-hidden`}>
+      {src ? <img src={src} className="w-full h-full object-cover" alt="Avatar" /> : initials}
     </div>
   )
 }
@@ -137,12 +137,18 @@ function Avatar({ name, size = "md" }) {
 // ────────────────────────────────────────────────────────────────────────────
 export default function RiderHome() {
   const navigate = useNavigate()
+  const { riderActiveRide, setRiderRideActive, hasActiveRide } = useRide()
   const [tab, setTab] = useState("home")
+  const [accountView, setAccountView] = useState("menu")
+  const [statFilter, setStatFilter] = useState("7 Days")
+  const [uploadingPic, setUploadingPic] = useState(false)
 
   // ── User info ─────────────────────────────────────────────────────────────
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}")
   const [profile, setProfile] = useState(null)
   const [profileLoad, setProfileLoad] = useState(true)
+  const [showSwitchPassengerConfirm, setShowSwitchPassengerConfirm] = useState(false)
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
 
   useEffect(() => {
     apiFetch("/auth/me")
@@ -173,29 +179,19 @@ export default function RiderHome() {
     navigate("/login", { replace: true })
   }
 
-  // ── Active Ride ───────────────────────────────────────────────────────────
-  const [activeRide, setActiveRide] = useState(null)
-  const [activeRideLoad, setActiveRideLoad] = useState(false)
-
+  // ── Active Ride — synced from global context ──────────────────────────────
+  // Refetch on home tab to pick up any missed updates
   useEffect(() => {
     if (tab !== "home" || !profile) return
-    setActiveRideLoad(true)
     apiFetch("/rides/my")
       .then(data => {
         const rides = data?.data?.rides || []
-        if (rides.length > 0) {
-          const latest = rides[0]
-          if (["pending", "locked", "pickup_started", "ongoing"].includes(latest.status)) {
-            setActiveRide(latest)
-          } else {
-            setActiveRide(null)
-          }
-        } else {
-          setActiveRide(null)
-        }
+        const latest = rides.find(r =>
+          ["pending", "locked", "pickup_started", "ongoing"].includes(r.status)
+        )
+        setRiderRideActive(latest || null)
       })
       .catch(() => { })
-      .finally(() => setActiveRideLoad(false))
   }, [tab, profile])
 
   // ── History ───────────────────────────────────────────────────────────────
@@ -309,6 +305,44 @@ export default function RiderHome() {
     } finally {
       setEditLoading(false)
     }
+  }
+
+  const handlePicUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!file.type.startsWith("image/")) return toast.error("Please select an image file")
+    if (file.size > 5 * 1024 * 1024) return toast.error("Image must be less than 5MB")
+
+    setUploadingPic(true)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64Str = reader.result
+      try {
+        await apiFetch("/auth/profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profilePic: base64Str })
+        })
+        setProfile(prev => ({ ...prev, profilePic: base64Str }))
+        toast.success("Profile picture uploaded", {
+          position: "bottom-center",
+          icon: "✓",
+          duration: 3000,
+          style: {
+            background: "#4B5563",
+            color: "#fff",
+            borderRadius: "10px",
+            marginBottom: "6rem",
+            fontSize: "14px"
+          }
+        })
+      } catch (err) {
+        toast.error("Failed to update profile picture", { position: "bottom-center" })
+      } finally {
+        setUploadingPic(false)
+      }
+    }
+    reader.readAsDataURL(file)
   }
 
   // ── Map / ride state ──────────────────────────────────────────────────────
@@ -507,29 +541,6 @@ export default function RiderHome() {
               Welcome, <span className="text-teal-600">{firstName}</span>!
             </h1>
           </div>
-          <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setShowDropdown(v => !v)} className="focus:outline-none">
-              <Avatar name={fullName || firstName} />
-            </button>
-            {showDropdown && (
-              <div className="absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-                <button onClick={() => { setShowDropdown(false); setTab("account") }}
-                  className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition">
-                  <span>👤</span> View Profile
-                </button>
-                <div className="border-t border-gray-100" />
-                <button onClick={() => { setShowDropdown(false); navigate("/dashboard") }}
-                  className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition">
-                  <span>🚗</span> Switch to Passenger
-                </button>
-                <div className="border-t border-gray-100" />
-                <button onClick={handleLogout}
-                  className="w-full text-left px-4 py-3 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition">
-                  <span>🚪</span> Logout
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -538,8 +549,7 @@ export default function RiderHome() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
 
-            <h2 className="text-lg font-bold text-center text-gray-900 mb-1">Confirm Ride Post</h2>
-            <p className="text-sm text-center text-gray-400 mb-4">Ready to find passengers?</p>
+            <h2 className="text-lg font-semibold text-center text-gray-900 mb-1">Confirm Ride Post</h2><br></br>
             <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-2">
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-teal-500">📍</span>
@@ -552,7 +562,7 @@ export default function RiderHome() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setShowPopup(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
+                className="flex-1 py-2.5 rounded-xl border border-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-50 transition">
                 Cancel
               </button>
               <button onClick={handleConfirm}
@@ -563,6 +573,99 @@ export default function RiderHome() {
           </div>
         </div>
       )}
+
+      {/* ── SWITCH CONFIRMATION POPUP ── */}
+      <AnimatePresence>
+        {showSwitchPassengerConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
+            >
+              <p className="text-black font-bold text-[17px] tracking-tight mb-6 mt-2">you want to switch to passenger ?</p>
+              <div className="flex gap-4 justify-center">
+                <button onClick={() => setShowSwitchPassengerConfirm(false)} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
+                  No
+                </button>
+                <button onClick={async () => {
+                  if (hasActiveRide) {
+                    setShowSwitchPassengerConfirm(false)
+                    toast.error("Complete your active ride before switching roles.")
+                    return
+                  }
+                  setShowSwitchPassengerConfirm(false)
+                  navigate("/dashboard")
+                }} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
+                  Yes
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
+      {/* ── SIGN OUT CONFIRMATION POPUP ── */}
+      <AnimatePresence>
+        {showSignOutConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
+            >
+              <p className="text-black font-semibold text-[17px] tracking-tight mb-6 mt-2">
+                Are you sure you want to sign out?
+              </p>
+
+              <div className="flex gap-4 justify-center">
+
+                {/* CANCEL */}
+                <button
+                  onClick={() => setShowSignOutConfirm(false)}
+                  className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition-all duration-200 hover:bg-black hover:text-white"
+                >
+                  Cancel
+                </button>
+
+                {/* SIGN OUT */}
+                <button
+                  onClick={async () => {
+                    if (hasActiveRide) {
+                      setShowSignOutConfirm(false)
+                      toast.error("Complete your active ride before signing out.")
+                      return
+                    }
+
+                    setShowSignOutConfirm(false)
+                    await handleLogout()
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition-all duration-200 hover:bg-red-500 hover:text-white active:scale-[0.98]"
+                >
+                  Sign Out
+                </button>
+
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
 
       {/* ══════════════════ HOME TAB ══════════════════ */}
       {tab === "home" && (
@@ -604,47 +707,45 @@ export default function RiderHome() {
               </div>
             )}
           </div>
-          {/* POST RIDE CARD OR ONGOING RIDE CARD */}
-          {activeRideLoad ? (
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex justify-center">
-              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : activeRide ? (
+          {/* ACTIVE RIDE CARD or POST RIDE CARD */}
+          {riderActiveRide ? (
             <div
               onClick={() => {
-                const collegeLocation = activeRide.collegeDestination?.lat ? [activeRide.collegeDestination.lat, activeRide.collegeDestination.lng] : [12.872109642876621, 74.84534749009204]
-                const userLocation = activeRide.currentLocation?.coordinates ? [activeRide.currentLocation.coordinates[1], activeRide.currentLocation.coordinates[0]] : null
-
                 const navState = {
-                  rideId: activeRide._id,
-                  userLocation,
-                  collegeLocation,
-                  departureTime: activeRide.departureTimeStr || activeRide.departureTime,
-                  passengerName: activeRide.passenger?.name || "Passenger",
-                  passengerPhone: activeRide.passenger?.phone || "",
-                  passengerLat: activeRide.passenger?.location?.coordinates?.[1],
-                  passengerLng: activeRide.passenger?.location?.coordinates?.[0],
-                  fare: activeRide.fare?.amount,
-                  distanceKm: activeRide.fare?.distanceKm,
-                  passengerPickup: activeRide.passenger?.location?.coordinates ? [activeRide.passenger.location.coordinates[1], activeRide.passenger.location.coordinates[0]] : null,
+                  rideId: riderActiveRide._id,
+                  passengerName: riderActiveRide.passenger?.name || "Passenger",
+                  passengerPhone: riderActiveRide.passenger?.phone || "",
+                  passengerPickup: riderActiveRide.passenger?.location?.coordinates
+                    ? [riderActiveRide.passenger.location.coordinates[1], riderActiveRide.passenger.location.coordinates[0]]
+                    : null,
+                  fare: riderActiveRide.fare?.amount,
+                  distanceKm: riderActiveRide.fare?.distanceKm,
                 }
-
-                if (activeRide.status === "pending") navigate(`/rider-wait/${activeRide._id}`, { state: navState })
-                else if (activeRide.status === "locked") navigate("/ride-confirmed", { state: navState })
-                else navigate("/ride-pickup", { state: navState })
+                if (riderActiveRide.status === "pending") navigate(`/rider-wait/${riderActiveRide._id}`, { state: navState, replace: true })
+                else if (riderActiveRide.status === "locked") navigate("/ride-confirmed", { state: navState, replace: true })
+                else navigate("/ride-pickup", { state: navState, replace: true })
               }}
-              className="bg-teal-600 text-white rounded-3xl p-5 shadow-lg border border-teal-500 cursor-pointer hover:bg-teal-700 transition flex flex-col gap-3 relative overflow-hidden"
+              className="bg-teal-600 text-white rounded-3xl p-5 shadow-lg border border-teal-500 cursor-pointer hover:bg-teal-700 active:scale-[0.98] transition flex flex-col gap-3 relative overflow-hidden"
             >
               <div className="absolute -right-4 -top-4 text-7xl opacity-10">🚗</div>
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className="text-xl font-extrabold mb-1">Ongoing Ride</h2>
-                  <p className="text-teal-100 text-sm font-medium">Tap to view your ride details</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-teal-200 mb-0.5">Active Ride</p>
+                  <h2 className="text-xl font-extrabold">
+                    {riderActiveRide.status === "pending" ? "Searching for Passenger…" :
+                      riderActiveRide.status === "locked" ? "Passenger Found!" :
+                        riderActiveRide.status === "pickup_started" ? "En Route to Passenger" :
+                          "Ride in Progress"}
+                  </h2>
+                  <p className="text-teal-100 text-sm font-medium mt-0.5">Tap to return to your ride</p>
                 </div>
-                <div className="bg-white text-teal-600 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg shadow-sm">
-                  ➔
-                </div>
+                <div className="bg-white text-teal-600 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg shadow-sm flex-shrink-0">➔</div>
               </div>
+              {riderActiveRide.passenger?.name && (
+                <div className="bg-teal-700/50 rounded-xl px-3 py-2 text-sm text-teal-100">
+                  Passenger: <span className="font-semibold text-white">{riderActiveRide.passenger.name}</span>
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 px-5 py-5 space-y-3">
@@ -666,7 +767,7 @@ export default function RiderHome() {
                     />
                     {loadingSugg && <span className="absolute right-0 top-0 text-gray-400 animate-spin">⟳</span>}
                     {showDrop && suggestions.length > 0 && (
-                      <ul className="absolute z-50 left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+                      <ul className="absolute z-50 left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl max-h-52 overflow-y-auto">
                         {suggestions.map((s, i) => (
                           <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
                             <button type="button" onMouseDown={() => selectSuggestion(s)}
@@ -698,9 +799,9 @@ export default function RiderHome() {
                 {/* Divider with dashed line */}
                 <div className="flex items-center gap-3 px-4">
                   <div className="w-3 flex justify-center">
-                    <div className="w-px h-4 border-l-2 border-dashed border-gray-300" />
+                    <div className="w-px h-4 border-l-2 border-dashed border-gray-100" />
                   </div>
-                  <div className="flex-1 border-t border-dashed border-gray-200" />
+                  <div className="flex-1 border-t border-dashed border-gray-100" />
                 </div>
 
                 {/* TO */}
@@ -724,9 +825,14 @@ export default function RiderHome() {
 
               {/* Actions */}
               <div className="flex gap-3 pt-1">
-                <button onClick={handleSearch}
-                  className="flex-1 py-3 rounded-xl bg-gray-900 hover:bg-gray-700 active:scale-95 text-white text-sm font-semibold transition">
-                  Search for Passenger
+                <button
+                  onClick={hasActiveRide ? () => toast.error("Complete your active ride first.") : handleSearch}
+                  disabled={hasActiveRide}
+                  className={`flex-1 py-3 rounded-xl text-sm font-semibold transition active:scale-95 ${hasActiveRide
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-900 hover:bg-gray-700 text-white"
+                    }`}>
+                  {hasActiveRide ? "Ride in Progress" : "Search for Passenger"}
                 </button>
                 <button
                   onClick={() => {
@@ -805,92 +911,159 @@ export default function RiderHome() {
 
       {/* ══════════════════ ACCOUNT TAB ══════════════════ */}
       {tab === "account" && (
-        <div className="px-4 pt-5 pb-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">Account</h2>
-          {profileLoad ? (
-            <div className="flex justify-center py-16">
-              <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 relative">
-                {!editMode ? (
-                  <button
-                    onClick={() => { setEditMode(true); setEditEmail(profile?.email || "") }}
-                    className="absolute top-4 right-4 p-2 text-teal-600 hover:bg-teal-50 rounded-full transition"
-                    title="Edit Email"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                ) : (
-                  <div className="absolute top-4 right-4 flex gap-1">
-                    <button onClick={handleEditSave} disabled={editLoading} className="p-2 text-green-600 hover:bg-green-50 rounded-full transition">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </button>
-                    <button onClick={() => { setEditMode(false); setEditMsg("") }} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
+        <div className="px-4 pt-5 pb-24">
+          {accountView === "menu" && (
+            <>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Profile</h2>
 
-                <div className="flex items-center gap-4 mb-4">
-                  <Avatar name={fullName || firstName} size="lg" />
-                  <div>
-                    <p className="font-bold text-gray-900 text-base">{fullName || firstName}</p>
-                    <p className="text-xs text-teal-600 font-medium mt-0.5">Rider</p>
-                  </div>
+              {profileLoad ? (
+                <div className="flex justify-center py-16">
+                  <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
                 </div>
+              ) : (
+                <>
+                  <div onClick={() => setAccountView("details")} className="bg-white border border-gray-300 rounded-[20px] p-4 flex items-center justify-between shadow-sm cursor-pointer mb-6 active:scale-[0.98] transition">
+                    <div className="flex items-center gap-4">
 
-                <div className="space-y-3">
-                  <InfoRow icon="🎓" label="University ID" value={profile?.universityId || "—"} />
-                  {editMode ? (
-                    <div className="flex items-center gap-3">
-                      <span className="text-base w-5 text-center">📧</span>
-                      <div className="flex-1">
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide">Email (Editable)</p>
-                        <input
-                          type="email"
-                          value={editEmail}
-                          onChange={e => setEditEmail(e.target.value)}
-                          className="w-full bg-gray-50 border-b border-teal-200 py-1 text-sm focus:outline-none focus:border-teal-500 transition-colors"
-                          autoFocus
-                          placeholder="your@email.com"
-                        />
-                        {editMsg && <p className={`text-[10px] mt-1 ${editMsg.includes("success") ? "text-green-600" : "text-red-500"}`}>{editMsg}</p>}
+                      <div className="relative w-16 h-16 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <input type="file" id="profileUpload" accept="image/*" className="hidden" onChange={handlePicUpload} disabled={uploadingPic} onClick={(e) => e.stopPropagation()} />
+                        <label htmlFor="profileUpload" className="cursor-pointer w-full h-full rounded-full bg-teal-50 flex items-center justify-center text-teal-600 border-2 border-white shadow-sm font-bold text-xl overflow-hidden hover:opacity-80 transition relative">
+                          {uploadingPic ? (
+                            <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                          ) : profile?.profilePic ? (
+                            <img src={profile.profilePic} alt="Profile" className="w-full h-full object-cover" />
+                          ) : (
+                            (fullName || firstName || "R")[0].toUpperCase()
+                          )}
+                          <div className="absolute bottom-0 inset-x-0 h-1/3 bg-black/40 flex items-center justify-center pointer-events-none">
+                            <span className="text-white text-[9px] font-semibold">EDIT</span>
+                          </div>
+                        </label>
+                      </div>
+
+                      <div>
+                        <h2 className="text-gray-900 font-bold text-[17px]">{fullName || firstName}</h2>
+                        <p className="text-gray-500 text-sm mt-0.5">{profile?.phone || profile?.email || "—"}</p>
                       </div>
                     </div>
-                  ) : (
-                    <InfoRow icon="📧" label="Email" value={profile?.email || "—"} />
-                  )}
-                  <InfoRow icon="📱" label="Phone" value={profile?.phone || storedUser?.phone || "—"} />
-                  <InfoRow icon="⚥" label="Gender" value={profile?.gender || "—"} />
+                    <span className="text-gray-400 text-2xl">›</span>
+                  </div>
+
+                  <div className="bg-white border border-gray-300 rounded-[20px] overflow-hidden flex flex-col mb-6 shadow-sm">
+                    {[
+                      { label: "Ride Statistics", onClick: () => setAccountView("statistics") },
+                      { label: "Help", onClick: () => setAccountView("help") },
+                      { label: "Switch to Passenger", onClick: () => setShowSwitchPassengerConfirm(true) },
+                      { label: "Theme", onClick: () => toast.success("Theme feature coming later!") },
+                      { label: "Sign Out", onClick: () => setShowSignOutConfirm(true) }
+                    ].map((item, i, arr) => (
+                      <div key={item.label} onClick={item.onClick} className={`flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition ${i !== arr.length - 1 ? "border-b border-gray-300" : ""}`}>
+                        <div className="flex items-center gap-3">
+                          <span className={`${item.label === "Sign Out" ? "text-red-400 font-medium" : "text-gray-800 font-medium"} text-[15px]`}>{item.label}</span>
+                        </div>
+                        <span className="text-gray-400 text-xl">›</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {accountView === "details" && (
+            <div className="animate-fade-in">
+              <button onClick={() => setAccountView("menu")} className="mb-6 text-teal-600 font-bold flex items-center gap-1 text-[15px]">
+                <span className="text-xl leading-none -mt-0.5">‹</span> Back
+              </button>
+              <h2 className="text-2xl font-bold mb-6 text-gray-900">User Details</h2>
+
+              <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-300 relative space-y-4">
+                <div className="flex justify-between border-b border-gray-300 pb-3">
+                  <span className="text-gray-500 font-medium text-sm">Name</span>
+                  <span className="text-gray-900 font-bold text-sm">{fullName || firstName}</span>
                 </div>
+                <div className="flex justify-between border-b border-gray-300 pb-3">
+                  <span className="text-gray-500 font-medium text-sm">University ID</span>
+                  <span className="text-gray-900 font-bold text-sm">{profile?.universityId || "—"}</span>
+                </div>
+
+
+                <div className="flex justify-between border-b border-gray-300 pb-3">
+                  <span className="text-gray-500 font-medium text-sm">Email</span>
+                  <span className="text-gray-900 font-bold text-sm truncate max-w-[200px]">{profile?.email || "—"}</span>
+                </div>
+
+
+                <div className="flex justify-between border-b border-gray-300 pb-3">
+                  <span className="text-gray-500 font-medium text-sm">Phone</span>
+                  <span className="text-gray-900 font-bold text-sm">{profile?.phone || storedUser?.phone || "—"}</span>
+                </div>
+                <div className="flex justify-between border-b border-gray-300 pb-3">
+                  <span className="text-gray-500 font-medium text-sm">Gender</span>
+                  <span className="text-gray-900 font-bold text-sm">{profile?.gender || "—"}</span>
+                </div>
+                {profile?.vehicleNo && (
+                  <div className="flex justify-between pb-1">
+                    <span className="text-gray-500 font-medium text-sm">Vehicle No</span>
+                    <span className="text-gray-900 font-bold text-sm uppercase">{profile.vehicleNo}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {accountView === "statistics" && (
+            <div className="animate-fade-in">
+              <button onClick={() => setAccountView("menu")} className="mb-6 text-teal-600 font-bold flex items-center gap-1 text-[15px]">
+                <span className="text-xl leading-none -mt-0.5">‹</span> Back
+              </button>
+              <h2 className="text-2xl font-bold mb-6 text-gray-900">Ride Statistics</h2>
+
+              <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm border-b border-gray-300">
+                {['7 Days', '30 Days', '1 Year'].map((filter) => (
+                  <button key={filter} onClick={() => setStatFilter(filter)} className={`flex-1 py-1.5 text-sm font-bold rounded-lg transition ${statFilter === filter ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+                    {filter}
+                  </button>
+                ))}
               </div>
 
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                <p className="text-sm font-bold text-gray-700 mb-3">Ride Statistics</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <StatBox label="Total Rides" value={profile?.totalRides ?? "—"} />
-                  <StatBox label="Total Earnings" value={profile?.totalEarnings !== undefined ? `₹${profile.totalEarnings}` : "—"} />
-                  <StatBox label="Rating" value={profile?.rating ? `${profile.rating} ⭐` : "—"} />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white border-b border-gray-300 rounded-[20px] p-5 shadow-sm flex flex-col items-center justify-center py-6">
+                  <span className="text-gray-500 font-medium text-xs">Total Rides</span>
+                  <span className="text-gray-900 font-extrabold text-2xl mt-1">{profile?.totalRides ?? "0"}</span>
+                </div>
+                <div className="bg-white border-b border-gray-300 rounded-[20px] p-5 shadow-sm flex flex-col items-center justify-center py-6">
+                  <span className="text-gray-500 font-medium text-xs">Total Earnings</span>
+                  <span className="text-gray-900 font-extrabold text-2xl mt-1">{profile?.totalEarnings !== undefined ? `₹${profile.totalEarnings}` : "0"}</span>
+                </div>
+                <div className="bg-white border-b border-gray-300 rounded-[20px] p-5 shadow-sm flex flex-col items-center justify-center py-6 col-span-2">
+                  <span className="text-gray-500 font-medium text-xs">Rating</span>
+                  <span className="text-gray-900 font-extrabold text-2xl mt-1">{profile?.rating ? `${profile.rating}` : "5.0"}</span>
                 </div>
               </div>
+            </div>
+          )}
 
-              <div className="flex flex-col gap-3 justify-center pt-2">
-                <button onClick={() => navigate("/dashboard")}
-                  className="px-8 py-2.5 rounded-xl bg-teal-50 border border-teal-400 text-teal-700 font-semibold text-sm hover:bg-teal-100 transition inline-flex justify-center items-center gap-2 w-full max-w-[260px] mx-auto">
-                  <span>🚗</span> Switch to Passenger
-                </button>
-                <button onClick={handleLogout}
-                  className="px-8 py-2.5 rounded-xl bg-red-50 border border-red-400 text-red-600 font-semibold text-sm hover:bg-red-100 transition inline-flex justify-center items-center gap-2 w-full max-w-[260px] mx-auto">
-                  <span>🚪</span> Logout
-                </button>
+          {accountView === "help" && (
+            <div className="animate-fade-in">
+              <button onClick={() => setAccountView("menu")} className="mb-6 text-teal-600 font-bold flex items-center gap-1 text-[15px]">
+                <span className="text-xl leading-none -mt-0.5">‹</span> Back
+              </button>
+              <h2 className="text-2xl font-bold mb-6 text-gray-900">Help & Support</h2>
+
+              <div className="space-y-4">
+                <div className="bg-white border border-gray-300 rounded-[20px] p-4 shadow-sm cursor-pointer hover:border-teal-200 transition">
+                  <p className="font-bold text-gray-900">FAQs</p>
+                  <p className="text-sm text-gray-500 mt-1">Frequently asked questions</p>
+                </div>
+                <div className="bg-white border-b border-gray-300 rounded-[20px] p-4 shadow-sm cursor-pointer hover:border-teal-200 transition">
+                  <p className="font-bold text-gray-900">Get Help</p>
+                  <p className="text-sm text-gray-500 mt-1">Contact customer support</p>
+                </div>
+                <div onClick={() => toast.success("Ticket raised to admin dashboard successfully!")} className="bg-teal-50 border border-teal-100 rounded-[20px] p-4 shadow-sm cursor-pointer hover:bg-teal-100 transition">
+                  <p className="font-bold text-teal-700">Raise Ticket</p>
+                  <p className="text-sm text-teal-600 mt-1">Direct to admin dashboard</p>
+                </div>
               </div>
             </div>
           )}
@@ -966,7 +1139,7 @@ export default function RiderHome() {
                     onClick={() => loadSavedRide(ride)}
                     className="w-full mt-3 py-2.5 rounded-xl bg-teal-50 text-teal-600 text-sm font-semibold hover:bg-teal-600 hover:text-white transition-all flex items-center justify-center gap-2"
                   >
-                    <span>⚡</span> Use this ride
+                    <span></span> Use this ride
                   </button>
                 </div>
               ))}
@@ -976,26 +1149,33 @@ export default function RiderHome() {
       )}
 
       {/* ── BOTTOM NAV ── */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-3 z-40 shadow-lg">
-        <NavTab icon="🏠" label="Home" active={tab === "home"} onClick={() => setTab("home")} />
-        <NavTab icon="📋" label="History" active={tab === "history"} onClick={() => setTab("history")} />
-        <NavTab icon="👤" label="Profile" active={tab === "account"} onClick={() => setTab("account")} />
-      </div>
+      <BottomNav navTab={tab} setNavTab={setTab} />
     </div>
   )
 }
 
 // ── Small reusable components ─────────────────────────────────────────────────
 
-function NavTab({ icon, label, active, onClick }) {
+function BottomNav({ navTab, setNavTab }) {
+  const tabs = [
+    { id: "home", icon: Compass, label: "Explore" },
+    { id: "history", icon: Clock, label: "History" },
+    { id: "account", icon: User, label: "Profile" }
+  ];
   return (
-    <button onClick={onClick} className="flex flex-col items-center gap-0.5 px-4">
-      <span className={`text-xl transition-transform ${active ? "scale-110" : "opacity-40"}`}>{icon}</span>
-      <span className={`text-xs font-medium transition-colors ${active ? "text-teal-600" : "text-gray-400"}`}>
-        {label}
-      </span>
-      {active && <div className="w-1 h-1 rounded-full bg-teal-500 mt-0.5" />}
-    </button>
+    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-2 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
+      {tabs.map((t) => {
+        const active = navTab === t.id;
+        const Icon = t.icon;
+        return (
+          <button key={t.id} onClick={() => setNavTab(t.id)} className="flex flex-col items-center gap-1.5 flex-1 relative group">
+            <Icon className={`w-6 h-6 transition-colors duration-300 ${active ? "text-teal-600" : "text-gray-400 group-hover:text-gray-600"}`} />
+            <span className={`text-[10px] uppercase tracking-wider font-semibold transition-colors ${active ? "text-teal-600" : "text-gray-400 group-hover:text-gray-600"}`}>{t.label}</span>
+            {active && <motion.div layoutId="nav-pill" className="absolute -bottom-2 w-1.5 h-1.5 bg-teal-500 rounded-full" />}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

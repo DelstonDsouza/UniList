@@ -111,6 +111,15 @@ export default function RiderWait() {
     return () => clearInterval(t)
   }, [])
 
+  // ── Prevent Back Navigation ───────────────────────────────────────────────────
+  useEffect(() => {
+    window.history.pushState(null, "", window.location.href)
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href)
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
 
   // Departure time countdown
   useEffect(() => {
@@ -154,6 +163,7 @@ export default function RiderWait() {
       setPassengerJoined(true)
       setTimeout(() => {
         navigate("/ride-confirmed", {
+          replace: true,
           state: {
             rideId: data.rideId,
             userLocation, collegeLocation,

@@ -14,10 +14,13 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, default: "", lowercase: true, trim: true },
     gender: { type: String, enum: ["Male", "Female", "Other", ""], default: "" },
     universityId: { type: String, default: "", trim: true },
+    profilePic: { type: String, default: "" },
 
     // Role
     role: { type: String, enum: ["student", "admin"], default: "student" },
     isRider: { type: Boolean, default: false },
+    licenseNo: { type: String, default: "", trim: true },
+    vehicleNo: { type: String, default: "", trim: true },
 
     // Active ride tracking
     activeRideId: {

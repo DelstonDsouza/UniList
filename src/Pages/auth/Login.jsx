@@ -165,12 +165,61 @@ export default function Login() {
 
       if (!data.profileComplete) {
         navigate("/register-details")
-      } else if (!data.roleSelected) {
-        navigate("/select-role")
-      } else if (data.role === "rider") {
-        navigate("/rider-home")
-      } else {
-        navigate("/passenger-home")
+        return
+      }
+
+      // ── Check role & active ride, redirect accordingly ──
+      try {
+        const profile = await apiFetch("/auth/profile")
+        const isRider = profile?.user?.isRider === true
+
+        if (isRider) {
+          // Check if rider has an active ride in progress
+          const ridesData = await apiFetch("/rides/my")
+          const rides = ridesData?.data?.rides || []
+          const activeRide = rides.find(r =>
+            ["locked", "pickup_started", "ongoing"].includes(r.status)
+          )
+
+          if (activeRide) {
+            // Restore rider to the correct active page
+            if (activeRide.status === "locked") {
+              navigate("/ride-confirmed", {
+                replace: true,
+                state: {
+                  rideId: activeRide._id,
+                  passengerName: activeRide.passenger?.name,
+                  passengerPhone: activeRide.passenger?.phone,
+                  passengerLat: activeRide.passenger?.location?.coordinates?.[1],
+                  passengerLng: activeRide.passenger?.location?.coordinates?.[0],
+                  fare: activeRide.fare?.amount,
+                  distanceKm: activeRide.fare?.distanceKm,
+                }
+              })
+            } else {
+              navigate("/ride-pickup", {
+                replace: true,
+                state: {
+                  rideId: activeRide._id,
+                  passengerName: activeRide.passenger?.name,
+                  passengerPhone: activeRide.passenger?.phone,
+                  passengerPickup: activeRide.passenger?.location?.coordinates
+                    ? [activeRide.passenger.location.coordinates[1], activeRide.passenger.location.coordinates[0]]
+                    : null,
+                  fare: activeRide.fare?.amount,
+                }
+              })
+            }
+            return
+          }
+
+          navigate("/rider-home", { replace: true })
+        } else {
+          navigate("/dashboard", { replace: true })
+        }
+      } catch {
+        // Fallback if profile fetch fails
+        navigate("/dashboard", { replace: true })
       }
 
     } catch (err) {

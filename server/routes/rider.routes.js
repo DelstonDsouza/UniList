@@ -84,6 +84,28 @@ router.get("/active", auth, wrap(async (req, res) => {
 // RIDER ROUTES
 // ─────────────────────────────────────────────────────────────
 
+router.post("/register", auth, wrap(async (req, res) => {
+  const { licenseNo, vehicleNo } = req.body
+
+  // E.g., KA 19 AB 1234
+  const vehicleRegex = /^[A-Z]{2}\s\d{1,2}\s[A-Z]{1,2}\s\d{4}$/
+  // Indian DL: KA06 20110001234
+  const licenseRegex = /^[A-Z]{2}[0-9]{2}\s?[0-9]{11}$/
+
+  if (!vehicleRegex.test(vehicleNo)) {
+    return res.status(400).json({ success: false, error: { message: "Invalid vehicle number format. Must be like KA 19 AB 1234" } })
+  }
+  if (!licenseRegex.test(licenseNo)) {
+    return res.status(400).json({ success: false, error: { message: "Invalid driving license format. Must be state code + 13 digits" } })
+  }
+
+  const user = await User.findByIdAndUpdate(req.user._id, {
+    $set: { isRider: true, licenseNo, vehicleNo }
+  }, { new: true })
+
+  res.status(200).json({ success: true, data: { user } })
+}))
+
 router.post("/", auth, wrap(async (req, res) => {
   const {
     riderName, riderPhone, scooterNumber,

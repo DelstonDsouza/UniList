@@ -116,6 +116,16 @@ export default function RideConfirmed() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+  // ── Prevent Back Navigation ───────────────────────────────────────────────────
+  useEffect(() => {
+    window.history.pushState(null, "", window.location.href)
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href)
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
   useEffect(() => {
     if (userLocation?.[0] && userLocation?.[1])
       reverseGeocode(userLocation[0], userLocation[1]).then(setRiderAddress)
@@ -158,6 +168,7 @@ export default function RideConfirmed() {
     try {
       await apiFetch(`/rides/${rideId}/pickup-start`, { method: "POST" })
       navigate("/ride-pickup", {
+        replace: true,
         state: {
           rideId,
           userLocation,
@@ -254,13 +265,6 @@ export default function RideConfirmed() {
           <div className="rounded-xl p-3 text-center bg-orange-50 border border-orange-100">
             <p className="text-xs text-gray-400 mb-0.5">Departs</p>
             <p className="text-sm font-bold text-orange-600">{departLabel}</p>
-          </div>
-        </div>
-
-        <div className="rounded-xl p-3 flex items-start gap-3 bg-amber-50 border border-amber-200">
-          <div>
-            <p className="text-sm font-semibold text-amber-800">OTP Required at Pickup</p>
-            <p className="text-xs text-amber-700 mt-0.5">Ask your passenger for their 4-digit OTP when you arrive.</p>
           </div>
         </div>
 

@@ -8,6 +8,7 @@ import { apiFetch } from "../../services/api"
 import { socket, connectSocket } from "../../services/socket"
 import toast from "react-hot-toast"
 import SwipeButton from "../../components/ui/SwipeButton"
+import { motion, useMotionValue, useAnimation } from "framer-motion"
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -153,10 +154,10 @@ function OtpBoxes({ value, onChange, disabled }) {
           style={{
             width: 60, height: 68, fontSize: 30, fontWeight: 800, textAlign: "center",
             borderRadius: 16,
-            border: disabled ? "2px solid #e2e8f0" : value[i] ? "2.5px solid #16a34a" : "2.5px solid #2563EB",
-            background: disabled ? "#f8fafc" : value[i] ? "#f0fdf4" : "#eff6ff",
+            border: disabled ? "1.5px solid #cbd5e1" : value[i] ? "2px solid #16a34a" : "1.5px solid #cbd5e1",
+            background: disabled ? "#ffffff" : value[i] ? "#f0fdf4" : "#ffffff",
             color: disabled ? "#cbd5e1" : "#0f172a", outline: "none",
-            boxShadow: disabled ? "none" : "0 2px 10px rgba(37,99,235,0.12)",
+            boxShadow: disabled ? "none" : "0 2px 8px rgba(0,0,0,0.04)",
             cursor: disabled ? "not-allowed" : "text",
           }}
         />
@@ -169,7 +170,7 @@ function OtpBoxes({ value, onChange, disabled }) {
 function Modal({ title, onClose, children }) {
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 999,
+      position: "fixed", inset: 0, zIndex: 9999,
       background: "rgba(0,0,0,0.55)", display: "flex",
       alignItems: "flex-end", justifyContent: "center",
     }}>
@@ -280,13 +281,14 @@ export default function RidePickup() {
   const { state } = useLocation()
   const navigate = useNavigate()
 
-  const {
-    rideId, userLocation, collegeLocation,
-    passengerPickup, passengerName = "Passenger",
-    passengerPhone = "", fare = 20, departureTime = "",
-  } = state || {}
+  const [rideId, setRideId] = useState(state?.rideId ?? null)
+  const [passengerPickup, setPassengerPickup] = useState(state?.passengerPickup ?? null)
+  const [passengerName, setPassengerName] = useState(state?.passengerName ?? "Passenger")
+  const [passengerPhone, setPassengerPhone] = useState(state?.passengerPhone ?? "")
+  const [fare, setFare] = useState(state?.fare ?? 20)
+  const [bootstrapping, setBootstrapping] = useState(!state?.rideId)
 
-  const [riderPos, setRiderPos] = useState(userLocation ?? null)
+  const [riderPos, setRiderPos] = useState(state?.userLocation ?? null)
   const [routeCoords, setRouteCoords] = useState([])
   const [arrived, setArrived] = useState(false)
   const [otp, setOtp] = useState("")
@@ -301,6 +303,48 @@ export default function RidePickup() {
   // ── Endgame flow ──────────────────────────────────────────────────────────
   const [reachLoading, setReachLoading] = useState(false)
 
+  // ── Prevent Back Navigation ───────────────────────────────────────────────────
+  useEffect(() => {
+    window.history.pushState(null, "", window.location.href)
+    const handlePopState = () => {
+      window.history.pushState(null, "", window.location.href)
+    }
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
+
+  // ── Framer Motion Bottom Sheet Logic ──
+  const [dims, setDims] = useState({ vh: window.innerHeight })
+  useEffect(() => {
+    const fn = () => setDims({ vh: window.innerHeight })
+    window.addEventListener("resize", fn)
+    return () => window.removeEventListener("resize", fn)
+  }, [])
+
+  const BOTTOM_NAV = 0; // No bottom nav on the rider active screen
+  const SHEET_FULL = 140; 
+  const SHEET_HALF = dims.vh * 0.45;
+  const SHEET_COLLAPSED = dims.vh - BOTTOM_NAV - 180; 
+
+  const sheetY = useMotionValue(SHEET_HALF)
+  const sheetControls = useAnimation()
+  
+  useEffect(() => { sheetControls.start({ y: SHEET_HALF }) }, [SHEET_HALF, sheetControls])
+
+  const handleDragEnd = (_, info) => {
+    const currY = sheetY.get()
+    const velocity = info.velocity.y
+    const points = [SHEET_FULL, SHEET_HALF, SHEET_COLLAPSED]
+    let closest = points[0]; let minDiff = Math.abs(currY - points[0])
+    points.forEach(p => { const d = Math.abs(currY - p); if (d < minDiff) { minDiff = d; closest = p } })
+
+    let target = closest;
+    if (velocity < -120) { if (currY > SHEET_HALF + 50) target = SHEET_HALF; else target = SHEET_FULL }
+    else if (velocity > 120) { if (currY < SHEET_HALF - 50) target = SHEET_HALF; else target = SHEET_COLLAPSED }
+
+    sheetControls.start({ y: target, transition: { type: "spring", bounce: 0, duration: 0.4 } })
+  }
+
   const watchRef = useRef(null)
   const abortRef = useRef(null)
   const isPeak = isPeakHour()
@@ -311,6 +355,52 @@ export default function RidePickup() {
     connectSocket()
     socket.emit("join:ride", rideId)
   }, [rideId])
+
+  // ── Sync Ride State on Mount (handles browser refresh) ─────────────────────
+  useEffect(() => {
+    apiFetch("/rides/my").then(res => {
+      const rides = res?.data?.rides || []
+      // Find the most recent active ride
+      const active = rides.find(r =>
+        ["locked", "pickup_started", "ongoing", "reached_destination"].includes(r.status)
+      )
+
+      if (!active) {
+        toast.error("No active ride found.")
+        navigate("/rider-home", { replace: true })
+        return
+      }
+
+      // If rideId was already in state, just sync phase
+      if (rideId && active._id !== rideId) {
+        // mismatch — go to home
+        navigate("/rider-home", { replace: true })
+        return
+      }
+
+      // Reconstruct all missing state from the API
+      setRideId(active._id)
+      const pickup = active.passenger?.location?.coordinates
+        ? [active.passenger.location.coordinates[1], active.passenger.location.coordinates[0]]
+        : null
+      setPassengerPickup(prev => prev ?? pickup)
+      setPassengerName(active.passenger?.name ?? "Passenger")
+      setPassengerPhone(active.passenger?.phone ?? "")
+      setFare(active.fare?.amount ?? 20)
+
+      if (active.status === "ongoing" || active.status === "reached_destination") {
+        setPhase("toCollege")
+        setArrived(true)
+      } else if (active.status === "completed" || active.status === "cancelled") {
+        toast.error("Ride is no longer active.")
+        navigate("/rider-home", { replace: true })
+      }
+
+      setBootstrapping(false)
+    }).catch(() => {
+      setBootstrapping(false)
+    })
+  }, []) // eslint-disable-line
 
   // ── GPS watch + socket emit ───────────────────────────────────────────────
   useEffect(() => {
@@ -332,7 +422,7 @@ export default function RidePickup() {
   useEffect(() => {
     if (!riderPos) return
     const dest = phase === "toCollege"
-      ? (collegeLocation || COLLEGE)
+      ? COLLEGE
       : passengerPickup
     if (!dest) return
 
@@ -400,17 +490,28 @@ export default function RidePickup() {
   const currentEta = phase === "toCollege" ? etaToCol : etaToPass
   const etaLabel = phase === "toCollege" ? "Reaching college in" : "ETA to Passenger"
   const routeColor = phase === "toCollege" ? "#16a34a" : "#2563EB"
-  const destPin = phase === "toCollege" ? (collegeLocation || COLLEGE) : passengerPickup
+  const destPin = phase === "toCollege" ? COLLEGE : passengerPickup
+
+  // Show loading screen while recovering ride state after refresh
+  if (bootstrapping) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100dvh", background: "white", gap: 16 }}>
+        <div style={{ width: 40, height: 40, border: "4px solid #e2e8f0", borderTopColor: "#0f172a", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+        <p style={{ color: "#64748b", fontSize: 14, fontWeight: 600 }}>Restoring your ride…</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
+    )
+  }
 
   return (
     <>
       {showReport && <ReportModal onClose={() => setShowReport(false)} rideId={rideId} />}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
+      <div className="absolute inset-0 z-0 bg-gray-100 h-[100dvh]">
 
         {/* MAP */}
-        <div style={{ height: "48vh", width: "100%", flexShrink: 0, position: "relative" }}>
+        <div className="absolute inset-0 z-0">
           <MapContainer center={mapCenter} zoom={14}
             style={{ height: "100%", width: "100%" }} zoomControl={false}>
             <TileLayer
@@ -439,10 +540,8 @@ export default function RidePickup() {
             )}
           </MapContainer>
 
-          {/* Status badge */}
-
           {/* Help + Report overlay */}
-          <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
+          <div style={{ position: "absolute", top: "max(1rem, env(safe-area-inset-top))", right: 14, zIndex: 500, display: "flex", gap: 8 }}>
             <button onClick={() => setShowHelp(true)} style={{
               padding: "7px 12px", borderRadius: 20, border: "none",
               background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569",
@@ -457,17 +556,29 @@ export default function RidePickup() {
         </div>
 
         {/* BOTTOM SHEET */}
-        <div style={{
-          flex: 1, background: "white", borderRadius: "24px 24px 0 0",
-          marginTop: -20, zIndex: 10, position: "relative",
-          padding: "16px 20px 32px",
-          boxShadow: "0 -6px 30px rgba(0,0,0,0.10)",
-          display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
-        }}>
-          <div style={{ width: 40, height: 4, background: "#e2e8f0", borderRadius: 99, margin: "0 auto 4px" }} />
+        <motion.div
+          drag="y"
+          dragConstraints={{ top: SHEET_FULL, bottom: SHEET_COLLAPSED }}
+          dragElastic={{ top: 0, bottom: 0.15 }}
+          dragMomentum={false}
+          onDragEnd={handleDragEnd}
+          animate={sheetControls}
+          style={{ y: sheetY, height: dims.vh - SHEET_FULL }}
+          className="absolute top-0 left-0 right-0 z-20 bg-white rounded-t-[32px] shadow-[0_-15px_40px_rgba(0,0,0,0.08)] flex flex-col pt-3"
+        >
+          {/* DRAG HANDLE */}
+          <div className="w-full pb-3 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shrink-0" style={{ touchAction: 'none' }}>
+            <div style={{ width: 44, height: 5, background: "#cbd5e1", borderRadius: 99 }} />
+          </div>
 
-          {/* Title */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{
+            flex: 1, background: "white", padding: "0 20px 40px",
+            display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
+            touchAction: "pan-y"
+          }} onPointerDown={e => e.stopPropagation()}>
+
+            {/* Title */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <p style={{
                 fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
@@ -541,28 +652,17 @@ export default function RidePickup() {
           {/* OTP section — only before ride starts */}
           {phase === "toPassenger" && (
             <div style={{
-              background: arrived ? "#f0fdf4" : "#f8fafc",
-              border: `2px solid ${arrived ? "#86efac" : "#e2e8f0"}`,
-              borderRadius: 18, padding: "16px 16px 18px",
+              background: "#f8fafc",
+              border: `1.5px solid #e2e8f0`,
+              borderRadius: 16, padding: "14px 16px",
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  background: arrived ? "#16a34a" : "#e2e8f0",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-                }}>🔐</div>
-                <div>
-                  <p style={{
-                    fontWeight: 700, fontSize: 14, margin: "0 0 1px",
-                    color: arrived ? "#15803d" : "#64748b"
-                  }}>
-                    {arrived ? "Enter passenger's OTP" : "OTP unlocks on arrival"}
-                  </p>
-                  <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>
-                    {arrived ? "Ask passenger for their 4-digit code" : "Drive to pickup point to unlock"}
-                  </p>
-                </div>
-              </div>
+              <p style={{
+                fontWeight: 700, fontSize: 13, margin: "0 0 14px",
+                color: arrived ? "#0f172a" : "#64748b",
+                textAlign: "center"
+              }}>
+                {arrived ? "Enter passenger's OTP" : "Drive to pickup point to unlock OTP"}
+              </p>
 
               <OtpBoxes value={otp} onChange={v => { setOtp(v); setOtpError("") }}
                 disabled={!arrived || submitting} />
@@ -574,7 +674,17 @@ export default function RidePickup() {
               )}
 
               <div style={{ marginTop: 14 }}>
-                {arrived && otp.length === 4 ? (
+                {!arrived ? (
+                  <button onClick={() => setArrived(true)} style={{
+                    width: "100%", padding: "14px 0",
+                    borderRadius: 14, border: "1.5px solid #cbd5e1",
+                    background: "white", color: "#475569",
+                    fontSize: 14, fontWeight: 700, cursor: "pointer",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.02)"
+                  }}>
+                    I have reached the pickup point
+                  </button>
+                ) : otp.length === 4 ? (
                   <SwipeButton
                     label={submitting ? "Verifying…" : "Slide to Verify OTP and Start Ride"}
                     color="#16a34a"
@@ -584,24 +694,13 @@ export default function RidePickup() {
                 ) : (
                   <div style={{
                     width: "100%", padding: "14px 0", borderRadius: 14,
-                    background: "#e2e8f0", color: "#94a3b8",
+                    background: "#e2e8f0", color: "#64748b",
                     fontSize: 14, fontWeight: 600, textAlign: "center",
                   }}>
-                    {!arrived ? "Drive to passenger first" : "Enter OTP to continue"}
+                    Enter OTP to continue
                   </div>
                 )}
               </div>
-
-              {!arrived && (
-                <button onClick={() => setArrived(true)} style={{
-                  width: "100%", marginTop: 10, padding: "11px 0",
-                  borderRadius: 12, border: "1.5px solid #cbd5e1",
-                  background: "transparent", color: "#64748b",
-                  fontSize: 13, fontWeight: 600, cursor: "pointer",
-                }}>
-                  I have reached the pickup point
-                </button>
-              )}
             </div>
           )}
 
@@ -615,20 +714,9 @@ export default function RidePickup() {
             />
           )}
 
-          {/* Report + Help buttons */}
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => setShowReport(true)} style={{
-              flex: 1, padding: "11px 0", borderRadius: 12,
-              border: "1.5px solid #fecaca", background: "#fef2f2",
-              color: "#dc2626", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}>🚨 Report Issue</button>
-            <button onClick={() => setShowHelp(true)} style={{
-              flex: 1, padding: "11px 0", borderRadius: 12,
-              border: "1.5px solid #e2e8f0", background: "#f8fafc",
-              color: "#475569", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}>❓ Help</button>
+          {/* Report + Help buttons Removed */}
           </div>
-        </div>
+        </motion.div>
       </div>
     </>
   )

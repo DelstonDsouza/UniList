@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 import { useRide } from "../../context/RideContext"
 import { socket } from "../../services/socket"
+import { motion, useMotionValue, useAnimation } from "framer-motion"
 
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -168,6 +169,38 @@ function HelpModal({ onClose }) {
 export default function ActiveRidePanel() {
   const { activeRide, fareInfo, viewState } = useRide()
 
+  // ── Framer Motion Bottom Sheet Logic ──
+  const [dims, setDims] = useState({ vh: window.innerHeight })
+  useEffect(() => {
+    const fn = () => setDims({ vh: window.innerHeight })
+    window.addEventListener("resize", fn)
+    return () => window.removeEventListener("resize", fn)
+  }, [])
+
+  const BOTTOM_NAV = 70;
+  const SHEET_FULL = 140;
+  const SHEET_HALF = dims.vh * 0.45;
+  const SHEET_COLLAPSED = dims.vh - BOTTOM_NAV - 180;
+
+  const sheetY = useMotionValue(SHEET_HALF)
+  const sheetControls = useAnimation()
+
+  useEffect(() => { sheetControls.start({ y: SHEET_HALF }) }, [SHEET_HALF, sheetControls])
+
+  const handleDragEnd = (_, info) => {
+    const currY = sheetY.get()
+    const velocity = info.velocity.y
+    const points = [SHEET_FULL, SHEET_HALF, SHEET_COLLAPSED]
+    let closest = points[0]; let minDiff = Math.abs(currY - points[0])
+    points.forEach(p => { const d = Math.abs(currY - p); if (d < minDiff) { minDiff = d; closest = p } })
+
+    let target = closest;
+    if (velocity < -120) { if (currY > SHEET_HALF + 50) target = SHEET_HALF; else target = SHEET_FULL }
+    else if (velocity > 120) { if (currY < SHEET_HALF - 50) target = SHEET_HALF; else target = SHEET_COLLAPSED }
+
+    sheetControls.start({ y: target, transition: { type: "spring", bounce: 0, duration: 0.4 } })
+  }
+
   const pickupLat = activeRide?.passenger?.location?.coordinates?.[1]
   const pickupLng = activeRide?.passenger?.location?.coordinates?.[0]
   const passengerPos = (pickupLat && pickupLng) ? [pickupLat, pickupLng] : null
@@ -281,9 +314,10 @@ export default function ActiveRidePanel() {
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
 
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f1f5f9" }}>
+      <div className="absolute inset-0 z-0 bg-gray-100 h-[100dvh]">
 
-        <div className="map-container flex-shrink-0">
+        {/* MAP CONTAINER */}
+        <div className="absolute inset-0 z-0">
           <MapContainer center={mapCenter} zoom={14}
             style={{ height: "100%", width: "100%" }} zoomControl={false}>
             <TileLayer
@@ -313,7 +347,7 @@ export default function ActiveRidePanel() {
           </MapContainer>
 
 
-          <div style={{ position: "absolute", top: 14, right: 14, zIndex: 500, display: "flex", gap: 8 }}>
+          <div style={{ position: "absolute", top: "max(1rem, env(safe-area-inset-top))", right: 14, zIndex: 500, display: "flex", gap: 8 }}>
             <button onClick={() => setShowHelp(true)} style={{
               padding: "7px 12px", borderRadius: 20, border: "none",
               background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569",
@@ -327,132 +361,123 @@ export default function ActiveRidePanel() {
           </div>
         </div>
 
-        <div style={{
-          flex: 1, background: "white", borderRadius: "24px 24px 0 0",
-          marginTop: -20, zIndex: 10, position: "relative",
-          padding: "16px 20px 32px",
-          boxShadow: "0 -6px 30px rgba(0,0,0,0.10)",
-          display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
-        }}>
-          <div style={{ width: 40, height: 4, background: "#e2e8f0", borderRadius: 99, margin: "0 auto 4px" }} />
-
-          <div>
-            <p style={{
-              fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
-              color: isOngoing ? "#16a34a" : "#2563EB"
-            }}>
-              {isOngoing ? "RIDE IN PROGRESS" : "Pickup Passenger"}
-            </p>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>
-              {isOngoing ? "Heading to College" : "Rider is on the way"}
-            </h2>
+        {/* DRAGGABLE BOTTOM SHEET */}
+        <motion.div
+          drag="y"
+          dragConstraints={{ top: SHEET_FULL, bottom: SHEET_COLLAPSED }}
+          dragElastic={{ top: 0, bottom: 0.15 }}
+          dragMomentum={false}
+          onDragEnd={handleDragEnd}
+          animate={sheetControls}
+          style={{ y: sheetY, height: dims.vh - SHEET_FULL }}
+          className="absolute top-0 left-0 right-0 z-20 bg-white rounded-t-[32px] shadow-[0_-15px_40px_rgba(0,0,0,0.08)] flex flex-col pt-3"
+        >
+          {/* DRAG HANDLE */}
+          <div className="w-full pb-3 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shrink-0" style={{ touchAction: 'none' }}>
+            <div style={{ width: 44, height: 5, background: "#cbd5e1", borderRadius: 99 }} />
           </div>
 
           <div style={{
-            background: isOngoing ? "#0f172a" : "#1e40af",
-            borderRadius: 18, padding: "16px 18px",
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-          }}>
+            flex: 1, background: "white", padding: "0 20px 90px",
+            display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
+            touchAction: "pan-y"
+          }} onPointerDown={e => e.stopPropagation()}>
+
             <div>
               <p style={{
-                fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600,
-                letterSpacing: "0.08em", margin: "0 0 2px"
-              }}>{etaLabel}</p>
-              <p style={{ fontSize: 48, fontWeight: 900, color: "white", margin: 0, lineHeight: 1 }}>
-                {etaDisplay != null ? etaDisplay : "—"}
-                <span style={{ fontSize: 16, fontWeight: 600, marginLeft: 6, color: "rgba(255,255,255,0.6)" }}>
-                  {etaDisplay != null ? "min" : ""}
-                </span>
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
+                color: isOngoing ? "#16a34a" : "#2563EB"
+              }}>
+                {isOngoing ? "RIDE IN PROGRESS" : "Pickup Passenger"}
               </p>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                {isOngoing ? "Heading to College" : "Rider is on the way"}
+              </h2>
             </div>
-            <div style={{ textAlign: "right" }}>
-              {isOngoing && distToDest != null && (
-                <p style={{ fontSize: 26, fontWeight: 800, color: "white", margin: "0 0 4px" }}>
-                  {distToDest} km
-                </p>
-              )}
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", margin: 0 }}>
-                {riderPos ? "" : "Waiting…"}
-              </p>
-            </div>
-          </div>
 
-          <div style={{ background: "#F0F9FF", border: "1.5px solid #BFDBFE", borderRadius: 16, padding: "12px 14px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{
-                  width: 46, height: 46, borderRadius: 12,
-                  background: "linear-gradient(135deg,#2563EB,#1D4ED8)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "white", fontSize: 18, fontWeight: 800,
-                }}>{(activeRide.riderName || "R")[0].toUpperCase()}</div>
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: 15, color: "#0f172a", margin: "0 0 2px" }}>
-                    {activeRide.riderName || "—"}
-                  </p>
-                  {activeRide.riderPhone && (
-                    <a href={`tel:${activeRide.riderPhone}`}
-                      style={{ fontSize: 12, color: "#2563EB", textDecoration: "none" }}>
-                      📞 {activeRide.riderPhone}
-                    </a>
-                  )}
-                </div>
+            <div style={{
+              background: isOngoing ? "#0f172a" : "#1e40af",
+              borderRadius: 18, padding: "16px 18px",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}>
+              <div>
+                <p style={{
+                  fontSize: 10, color: "rgba(255,255,255,0.6)", fontWeight: 600,
+                  letterSpacing: "0.08em", margin: "0 0 2px"
+                }}>{etaLabel}</p>
+                <p style={{ fontSize: 48, fontWeight: 900, color: "white", margin: 0, lineHeight: 1 }}>
+                  {etaDisplay != null ? etaDisplay : "—"}
+                  <span style={{ fontSize: 16, fontWeight: 600, marginLeft: 6, color: "rgba(255,255,255,0.6)" }}>
+                    {etaDisplay != null ? "min" : ""}
+                  </span>
+                </p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <p style={{ fontSize: 16, fontWeight: 800, color: "#16a34a", margin: 0 }}>₹{fare}</p>
-                <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>cash</p>
+                {isOngoing && distToDest != null && (
+                  <p style={{ fontSize: 26, fontWeight: 800, color: "white", margin: "0 0 4px" }}>
+                    {distToDest} km
+                  </p>
+                )}
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", margin: 0 }}>
+                  {riderPos ? "" : "Waiting…"}
+                </p>
               </div>
             </div>
-          </div>
 
-          {isWaiting && otp && (
-            <div style={{
-              background: "#f0fdf4", border: "2px solid #86efac",
-              borderRadius: 18, padding: "16px 16px 18px",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10, background: "#16a34a",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-                }}>🔐</div>
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: 14, margin: "0 0 1px", color: "#15803d" }}>
-                    Share this OTP at pickup
-                  </p>
-                  <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>
-                    Show the rider when they arrive
-                  </p>
+            <div style={{ background: "#F0F9FF", border: "1.5px solid #BFDBFE", borderRadius: 16, padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    width: 46, height: 46, borderRadius: 12,
+                    background: "linear-gradient(135deg,#2563EB,#1D4ED8)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "white", fontSize: 18, fontWeight: 800,
+                  }}>{(activeRide.riderName || "R")[0].toUpperCase()}</div>
+                  <div>
+                    <p style={{ fontWeight: 700, fontSize: 15, color: "#0f172a", margin: "0 0 2px" }}>
+                      {activeRide.riderName || "—"}
+                    </p>
+                    {activeRide.riderPhone && (
+                      <a href={`tel:${activeRide.riderPhone}`}
+                        style={{ fontSize: 12, color: "#2563EB", textDecoration: "none" }}>
+                        📞 {activeRide.riderPhone}
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: "#16a34a", margin: 0 }}>₹{fare}</p>
+                  <p style={{ fontSize: 10, color: "#94a3b8", margin: 0 }}>cash</p>
                 </div>
               </div>
-              <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-                {otp.split("").map((digit, i) => (
-                  <div key={i} style={{
-                    width: 60, height: 68, borderRadius: 14,
-                    background: "#0f172a", color: "white",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 32, fontWeight: 900, boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
-                  }}>{digit}</div>
-                ))}
-              </div>
-              <p style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", marginTop: 10 }}>
-                Do not share with anyone else
-              </p>
             </div>
-          )}
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => setShowReport(true)} style={{
-              flex: 1, padding: "11px 0", borderRadius: 12,
-              border: "1.5px solid #fecaca", background: "#fef2f2",
-              color: "#dc2626", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}>🚨 Report Issue</button>
-            <button onClick={() => setShowHelp(true)} style={{
-              flex: 1, padding: "11px 0", borderRadius: 12,
-              border: "1.5px solid #e2e8f0", background: "#f8fafc",
-              color: "#475569", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}>❓ Help</button>
+            {isWaiting && otp && (
+              <div style={{
+                background: "#f8fafc", border: "1.5px solid #e2e8f0",
+                borderRadius: 16, padding: "14px 16px",
+              }}>
+                <p style={{ fontWeight: 700, fontSize: 13, margin: "0 0 12px", color: "#475569", textAlign: "center" }}>
+                  Share this OTP at pickup
+                </p>
+                <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+                  {otp.split("").map((digit, i) => (
+                    <div key={i} style={{
+                      width: 50, height: 60, borderRadius: 12,
+                      background: "#0f172a", color: "white",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 28, fontWeight: 900, boxShadow: "0 4px 10px rgba(0,0,0,0.15)",
+                    }}>{digit}</div>
+                  ))}
+                </div>
+                <p style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", marginTop: 10, margin: "10px 0 0" }}>
+                  Do not share with anyone else
+                </p>
+              </div>
+            )}
+
           </div>
-        </div>
+        </motion.div>
       </div>
     </>
   )

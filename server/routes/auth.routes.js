@@ -66,7 +66,7 @@ router.put("/profile", async (req, res) => {
     if (!token) return res.status(401).json({ detail: "Missing token" })
 
     const decoded = jwt.verify(token, JWT_SECRET)
-    const { firstName, lastName, email, gender, universityId, isRider } = req.body
+    const { firstName, lastName, email, gender, universityId, isRider, profilePic } = req.body
 
     // If universityId is being set, mark student as registered
     if (universityId) {
@@ -94,6 +94,7 @@ router.put("/profile", async (req, res) => {
           ...(gender       !== undefined && { gender }),
           ...(universityId !== undefined && { universityId }),
           ...(isRider      !== undefined && { isRider }),
+          ...(profilePic   !== undefined && { profilePic }),
         },
       },
       { new: true }
@@ -155,6 +156,7 @@ router.get("/me", async (req, res) => {
         email:        user.email,
         gender:       user.gender,
         universityId: user.universityId,
+        profilePic:   user.profilePic,
         isRider:      user.isRider,
         role:         user.role,
         rating:       user.isRider
