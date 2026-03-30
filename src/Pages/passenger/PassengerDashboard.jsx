@@ -45,8 +45,11 @@ const reverseGeocode = async (lat, lng) => {
   try {
     const res = await fetch(`${NOMINATIM}/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: NOM_HEADERS })
     const data = await res.json()
+    if (!data || !data.display_name) throw new Error("No data")
     return extractShortName(data)
-  } catch { return `${lat.toFixed(5)}, ${lng.toFixed(5)}` }
+  } catch { 
+    return "Current Location" 
+  }
 }
 
 const searchPlaces = async (query) => {
@@ -57,6 +60,15 @@ const searchPlaces = async (query) => {
       label: x.display_name, short: extractShortName(x), lat: parseFloat(x.lat), lng: parseFloat(x.lon),
     }))
   } catch { return [] }
+}
+
+function MapClickListener({ onMapClick }) {
+  useMapEvents({
+    click: (e) => {
+      onMapClick([e.latlng.lat, e.latlng.lng])
+    }
+  })
+  return null
 }
 
 function RecenterMap({ mapBounds }) {
@@ -251,77 +263,6 @@ function BottomNav({ navTab, setNavTab }) {
   )
 }
 
-function BeARiderModal({ onClose, onSubmit, loading }) {
-  const [licenseNo, setLicenseNo] = useState("")
-  const [vehicleNo, setVehicleNo] = useState("")
-  const [errors, setErrors] = useState({ license: "", vehicle: "" })
-
-  const handleSubmit = () => {
-    let valid = true
-    const newErrs = { license: "", vehicle: "" }
-
-    if (!licenseNo.trim()) { newErrs.license = "Driving License No is required"; valid = false }
-    else {
-      const licRegex = /^[A-Z]{2}[0-9]{2}\s?[0-9]{11}$/
-      if (!licRegex.test(licenseNo.trim().toUpperCase())) {
-        newErrs.license = "Invalid Driving License No (e.g. KA05 20210012345)"
-        valid = false
-      }
-    }
-
-    if (!vehicleNo.trim()) { newErrs.vehicle = "Vehicle Number Plate is required"; valid = false }
-    else {
-      const vehRegex = /^[A-Z]{2}\s\d{1,2}\s[A-Z]{1,2}\s\d{4}$/
-      if (!vehRegex.test(vehicleNo.trim().toUpperCase())) {
-        newErrs.vehicle = "Invalid Vehicle Number Plate (e.g. KA 19 AB 1234)"
-        valid = false
-      }
-    }
-
-    setErrors(newErrs)
-    if (!valid) return
-    onSubmit({ licenseNo: licenseNo.trim().toUpperCase(), vehicleNo: vehicleNo.trim().toUpperCase() })
-  }
-
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl border border-gray-300 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-300">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Become a Rider</h2>
-            <p className="text-xs text-teal-600 mt-1 uppercase tracking-wider font-medium">Register your vehicle</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition text-gray-600">✕</button>
-        </div>
-        <div className="px-6 py-6 space-y-5">
-          <div>
-            <label className="text-xs font-bold text-gray-500 block mb-2 uppercase tracking-wide">Driving License No.</label>
-            <input type="text" value={licenseNo}
-              onChange={e => { setLicenseNo(e.target.value.toUpperCase()); setErrors(prev => ({ ...prev, license: "" })) }}
-              placeholder="e.g. KA05 20210012345"
-              className={`w-full bg-gray-50 border p-4 rounded-xl text-sm text-gray-900 focus:outline-none transition ${errors.license ? 'border-red-400 focus:ring-1 focus:ring-red-400' : 'border-gray-300 focus:border-teal-500 focus:ring-1 focus:ring-teal-500'}`} />
-            {errors.license && <p className="text-red-500 text-xs mt-2 font-semibold flex items-center gap-1">⚠ {errors.license}</p>}
-          </div>
-          <div>
-            <label className="text-xs font-bold text-gray-500 block mb-2 uppercase tracking-wide">Vehicle Number Plate</label>
-            <input type="text" value={vehicleNo}
-              onChange={e => { setVehicleNo(e.target.value.toUpperCase()); setErrors(prev => ({ ...prev, vehicle: "" })) }}
-              placeholder="e.g. KA 19 AB 1234"
-              className={`w-full bg-gray-50 border p-4 rounded-xl text-sm text-gray-900 focus:outline-none transition ${errors.vehicle ? 'border-red-400 focus:ring-1 focus:ring-red-400' : 'border-gray-300 focus:border-teal-500 focus:ring-1 focus:ring-teal-500'}`} />
-            {errors.vehicle && <p className="text-red-500 text-xs mt-2 font-semibold flex items-center gap-1">⚠ {errors.vehicle}</p>}
-          </div>
-        </div>
-        <div className="px-6 pb-6 flex gap-3">
-          <button onClick={onClose} className="flex-1 py-4 rounded-xl border border-gray-300 text-gray-600 text-[15px] font-bold hover:bg-gray-50 transition">Cancel</button>
-          <button onClick={handleSubmit} disabled={loading} className="flex-1 py-4 rounded-xl bg-teal-600 text-white text-[15px] font-bold hover:bg-teal-700 disabled:opacity-50 transition shadow-md">
-            {loading ? "Submitting…" : "Register"}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Main Dashboard ────────────────────────────────────────────────────────
 export default function PassengerDashboard() {
   const navigate = useNavigate()
@@ -346,9 +287,6 @@ export default function PassengerDashboard() {
   const [historyLoad, setHistoryLoad] = useState(false)
 
   // Rider state
-  const [showRiderModal, setShowRiderModal] = useState(false)
-  const [showRiderSuccessModal, setShowRiderSuccessModal] = useState(false)
-  const [riderRegLoading, setRiderRegLoading] = useState(false)
   const [showSwitchRiderConfirm, setShowSwitchRiderConfirm] = useState(false)
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
   const handleLogout = async () => {
@@ -470,6 +408,15 @@ export default function PassengerDashboard() {
     isUserTyping.current = false; setLocationName(item.short || item.label.split(",")[0]); setPassengerLocation([item.lat, item.lng]); setMapCenter([item.lat, item.lng]); setSuggestions([]); setShowDrop(false)
   }
 
+  const onMapClick = async (loc) => {
+    setPassengerLocation(loc)
+    setMapCenter(loc)
+    isUserTyping.current = false
+    setLocationName("Fetching place name…")
+    const name = await reverseGeocode(loc[0], loc[1])
+    setLocationName(name)
+  }
+
   const useCurrentLocation = () => {
     setShowDrop(false)
     if (!navigator.geolocation) return toast.error("GPS disabled")
@@ -514,16 +461,7 @@ export default function PassengerDashboard() {
     catch (err) { toast.error(err.message) }
   }, [requestRide, passengerLocation])
 
-  const handleRiderRegister = async ({ licenseNo, vehicleNo }) => {
-    setRiderRegLoading(true)
-    try {
-      const res = await apiFetch("/rider/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ licenseNo, vehicleNo }) })
-      if (res.data?.user) setPassengerProfile(res.data.user)
-      setShowRiderModal(false)
-      setShowRiderSuccessModal(true)
-    } catch (err) { toast.error(err.message || "Registration failed") }
-    finally { setRiderRegLoading(false) }
-  }
+
 
   const formatDate = (dateStr) => {
     if (!dateStr) return ""
@@ -594,7 +532,15 @@ export default function PassengerDashboard() {
                 <button onClick={() => setShowSwitchRiderConfirm(false)} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
                   No
                 </button>
-                <button onClick={() => { setShowSwitchRiderConfirm(false); navigate("/rider-home"); }} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
+                <button onClick={() => {
+                  if (hasActiveRide) {
+                    setShowSwitchRiderConfirm(false)
+                    toast.error("Complete your active ride before switching roles.")
+                    return
+                  }
+                  setShowSwitchRiderConfirm(false)
+                  navigate("/rider-home")
+                }} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
                   Yes
                 </button>
               </div>
@@ -621,7 +567,7 @@ export default function PassengerDashboard() {
               className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
             >
               <p className="text-black font-semibold text-[17px] tracking-tight mb-6 mt-2">
-                Are you sure you want to sign out?
+                Are you sure you want to Log Out?
               </p>
 
               <div className="flex gap-4 justify-center">
@@ -646,7 +592,7 @@ export default function PassengerDashboard() {
                   }}
                   className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-red-500 hover:text-white active:scale-[0.98]"
                 >
-                  Sign Out
+                  Log Out
                 </button>
               </div>
             </motion.div>
@@ -654,71 +600,7 @@ export default function PassengerDashboard() {
         )}
       </AnimatePresence>
 
-      {/* ────────────────── SUCCESS MODAL ────────────────── */}
-      <AnimatePresence>
-        {showRiderSuccessModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[2000] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className="bg-white w-full max-w-[420px] rounded-[20px] shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-gray-300 p-8 flex flex-col items-center text-center"
-            >
-              <div className="w-16 h-16 bg-teal-50 rounded-full flex items-center justify-center mb-6">
-                <motion.svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="w-8 h-8 text-teal-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={3}
-                >
-                  <motion.path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    initial={{ pathLength: 0, opacity: 0 }}
-                    animate={{ pathLength: 1, opacity: 1 }}
-                    transition={{ duration: 0.5, ease: "easeOut", delay: 0.15 }}
-                    d="M5 13l4 4L19 7"
-                  />
-                </motion.svg>
-              </div>
 
-              <h2 className="text-[22px] font-bold text-gray-900 mb-2 tracking-tight">You're now a Rider</h2>
-              <p className="text-[15px] text-gray-500 mb-8 leading-relaxed px-2">
-                Your vehicle has been successfully registered. You can now start posting rides.
-              </p>
-
-              <div className="flex flex-col gap-3 w-full">
-                <motion.button
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => navigate("/rider-home")}
-                  className="w-full py-3.5 rounded-[12px] bg-teal-600 text-white text-[15px] font-bold hover:bg-teal-700 transition-colors shadow-sm"
-                >
-                  Go to Rider Dashboard
-                </motion.button>
-
-                <motion.button
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setShowRiderSuccessModal(false)}
-                  className="w-full py-3.5 rounded-[12px] bg-transparent border-2 border-gray-300 text-gray-600 text-[15px] font-bold hover:bg-gray-50 transition-colors"
-                >
-                  Stay as Passenger
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ────────────────── MAP VIEW (HOME TAB ONLY) ────────────────── */}
       {navTab === "home" && !["confirmed", "pickup_started", "waiting", "ongoing", "fare_reveal"].includes(viewState) && (
@@ -727,6 +609,7 @@ export default function PassengerDashboard() {
             <MapContainer center={mapCenter} zoom={14} zoomControl={false} className="w-full h-full">
               <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution='&copy; CARTO' />
               <RecenterMap mapBounds={mapBounds} />
+              <MapClickListener onMapClick={onMapClick} />
 
               {passengerLocation && (
                 <Marker position={passengerLocation} icon={L.divIcon({
@@ -871,27 +754,38 @@ export default function PassengerDashboard() {
           )}
           <div className="space-y-4">
             {history.map((ride, i) => (
-              <div key={ride._id || i} className="bg-white rounded-2xl p-4 border border-gray-300 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-gray-200"></div>
-                <div className="flex items-start justify-between mb-3 pl-2">
+              <div key={ride._id || i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="text-xs text-gray-400 font-medium">{formatDate(ride.createdAt || ride.date)}</p>
-                    {ride.riderName && <p className="text-[15px] font-bold text-gray-900 mt-0.5">Maniac <span className="opacity-50 mx-1">•</span> {ride.riderName}</p>}
+                    {ride.riderName && <p className="text-sm font-bold text-gray-900 mt-0.5">{ride.riderName}</p>}
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Completed</span>
+                    {ride.distanceKm != null && <span className="text-[10px] text-gray-400 font-medium">{ride.distanceKm} km</span>}
                   </div>
                 </div>
-                <div className="space-y-3 pl-2 mt-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-2.5 h-2.5 rounded-full bg-teal-500 mt-1 flex-shrink-0" />
-                    <p className="text-sm font-medium text-gray-700">{ride.pickupLocation || "—"}</p>
+                
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Pickup</p>
+                      <p className="text-sm font-medium text-gray-800">{ride.pickupLocation || "—"}</p>
+                    </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-2.5 h-2.5 rounded-sm bg-red-500 mt-1 flex-shrink-0" />
-                    <p className="text-sm font-medium text-gray-700">{ride.destination || "St Aloysius College"}</p>
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 rounded-full bg-gray-400 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Destination</p>
+                      <p className="text-sm font-medium text-gray-800">{ride.destination || "St Aloysius College"}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between pl-2">
-                  <span className="text-sm font-bold text-teal-600">₹{ride.fare || 0}</span>
-                  {ride.distanceKm != null && <span className="text-xs text-gray-500">{ride.distanceKm} km</span>}
+                
+                <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
+                  <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Fare Paid</span>
+                  <span className="text-base font-bold text-teal-600">₹{ride.fare || 0}</span>
                 </div>
               </div>
             ))}
@@ -939,13 +833,7 @@ export default function PassengerDashboard() {
                   passengerProfile?.isRider
                     ? {
                       label: "Switch to Rider",
-                      onClick: () => {
-                        if (hasActiveRide) {
-                          toast.error("Complete your active ride before switching roles.")
-                          return
-                        }
-                        setShowSwitchRiderConfirm(true)
-                      }
+                      onClick: () => setShowSwitchRiderConfirm(true)
                     }
                     : {
                       label: "Become a Rider",
@@ -954,15 +842,15 @@ export default function PassengerDashboard() {
                           toast.error("Complete your active ride before changing roles.")
                           return
                         }
-                        setShowRiderModal(true)
+                        navigate("/become-rider")
                       }
                     },
                   { label: "Theme", onClick: () => toast.success("Theme feature coming later!") },
-                  { label: "Sign Out", onClick: () => setShowSignOutConfirm(true) }
+                  { label: "Log Out", onClick: () => setShowSignOutConfirm(true) }
                 ].map((item, i, arr) => (
                   <div key={item.label} onClick={item.onClick} className={`flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition ${i !== arr.length - 1 ? "border-b border-gray-300" : ""}`}>
                     <div className="flex items-center gap-3">
-                      <span className={`${item.label === "Sign Out" ? "text-red-400 font-medium" : "text-gray-800 font-medium"} text-[15px]`}>{item.label}</span>
+                      <span className={`${item.label === "Log Out" ? "text-red-400 font-medium" : "text-gray-800 font-medium"} text-[15px]`}>{item.label}</span>
                     </div>
                     <span className="text-gray-400 text-xl">›</span>
                   </div>
@@ -1050,7 +938,7 @@ export default function PassengerDashboard() {
         </div>
       )}
 
-      {showRiderModal && <BeARiderModal onClose={() => setShowRiderModal(false)} onSubmit={handleRiderRegister} loading={riderRegLoading} />}
+
 
       <BottomNav navTab={navTab} setNavTab={setNavTab} />
     </div>

@@ -52,7 +52,6 @@ export default function RiderSearching() {
     departureTimeRaw,
     riderName,
     riderPhone,
-    scooterNumber,
     pickupAddress,
   } = location.state || {}
 
@@ -91,7 +90,6 @@ export default function RiderSearching() {
           body: JSON.stringify({
             riderName:       riderName     || "",
             riderPhone:      riderPhone    || "",
-            scooterNumber:   scooterNumber || "N/A",
             currentLat:      (currentGps || userLocation)[0],
             currentLng:      (currentGps || userLocation)[1],
             pickupLat:       userLocation[0],

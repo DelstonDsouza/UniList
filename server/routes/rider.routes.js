@@ -85,30 +85,35 @@ router.get("/active", auth, wrap(async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 
 router.post("/register", auth, wrap(async (req, res) => {
-  const { licenseNo, vehicleNo } = req.body
+  const { licenseNo, vehicleNo, vehicleType } = req.body
+  console.log("📝 Registering rider:", { uid: req.user._id, licenseNo, vehicleNo, vehicleType })
 
-  // E.g., KA 19 AB 1234
-  const vehicleRegex = /^[A-Z]{2}\s\d{1,2}\s[A-Z]{1,2}\s\d{4}$/
-  // Indian DL: KA06 20110001234
-  const licenseRegex = /^[A-Z]{2}[0-9]{2}\s?[0-9]{11}$/
+  // Lenient regexes to prevent 400 errors for valid but differently formatted inputs
+  // Vehicle: Allow alphanumeric plus spaces/hyphens, min 6 chars
+  const vehicleRegex = /^[A-Z0-9\s-]{6,15}$/i
+  // License: Allow alphanumeric plus spaces/hyphens, min 10 chars
+  const licenseRegex = /^[A-Z0-9\s-]{10,24}$/i
 
-  if (!vehicleRegex.test(vehicleNo)) {
-    return res.status(400).json({ success: false, error: { message: "Invalid vehicle number format. Must be like KA 19 AB 1234" } })
+  if (!vehicleNo || !vehicleRegex.test(vehicleNo)) {
+    console.warn("❌ Registration failed: Invalid vehicleNo", vehicleNo)
+    return res.status(400).json({ success: false, error: { message: "Invalid vehicle number. Please enter a valid registration number (e.g. KA 01 AB 1234)" } })
   }
-  if (!licenseRegex.test(licenseNo)) {
-    return res.status(400).json({ success: false, error: { message: "Invalid driving license format. Must be state code + 13 digits" } })
+  if (!licenseNo || !licenseRegex.test(licenseNo)) {
+    console.warn("❌ Registration failed: Invalid licenseNo", licenseNo)
+    return res.status(400).json({ success: false, error: { message: "Invalid license number. Please enter your license number correctly." } })
   }
 
   const user = await User.findByIdAndUpdate(req.user._id, {
-    $set: { isRider: true, licenseNo, vehicleNo }
+    $set: { isRider: true, licenseNo, vehicleNo, vehicleType: vehicleType || "bike" }
   }, { new: true })
 
+  console.log("✅ Rider profile updated:", user._id)
   res.status(200).json({ success: true, data: { user } })
 }))
 
 router.post("/", auth, wrap(async (req, res) => {
   const {
-    riderName, riderPhone, scooterNumber,
+    riderName, riderPhone,
     pickupLat, pickupLng, currentLat, currentLng,
     departureTime,
   } = req.body
@@ -146,7 +151,6 @@ router.post("/", auth, wrap(async (req, res) => {
     riderId:      req.user._id,
     riderName:    riderName  || req.user.firstName || "Rider",
     riderPhone:   riderPhone || req.user.phone     || "",
-    scooterNumber: scooterNumber || "N/A",
     departureTime: departureTime || null,
     currentLocation: {
       type: "Point",

@@ -56,7 +56,7 @@ function RiderCard({ ride, passengerName, passengerPhone, onNameChange, onPhoneC
             {ride.riderName || "—"}
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            {ride.scooterNumber} &bull; {ride.collegeName || "SJEC"}
+            {ride.vehicleNo || "—"} &bull; {ride.collegeName || "SJEC"}
           </p>
         </div>
         {dist !== null && (

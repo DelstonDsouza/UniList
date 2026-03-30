@@ -204,85 +204,128 @@ export default function RideConfirmed() {
         </MapContainer>
       </div>
 
-      <div className="flex-1 bg-white px-5 pt-5 pb-8 flex flex-col gap-4"
+      <div
+        className="flex-1 bg-white px-5 pt-5 pb-8 flex flex-col gap-6"
         style={{
-          borderRadius: "24px 24px 0 0", marginTop: -20,
-          boxShadow: "0 -4px 24px rgba(0,0,0,0.08)", position: "relative", zIndex: 10
-        }}>
-
-        <div className="flex justify-center -mt-1 mb-1">
-          <div className="w-10 h-1 rounded-full bg-gray-200" />
+          borderRadius: "32px 32px 0 0",
+          marginTop: -30,
+          boxShadow: "0 -8px 30px rgba(0,0,0,0.1)",
+          position: "relative",
+          zIndex: 10
+        }}
+      >
+        {/* Drag Indicator */}
+        <div className="flex justify-center">
+          <div className="w-12 h-1.5 rounded-full bg-gray-200" />
         </div>
 
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-green-600 uppercase tracking-widest mb-0.5">Passenger Found</p>
-            <h2 className="text-xl font-bold text-gray-900">Ride Confirmed</h2>
+            <p className="text-[15px] font-bold text-green-700 uppercase tracking-[0.2em] mb-1">
+              Ride Confirmed
+            </p>
+
           </div>
-          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-lg font-bold text-green-600">✓</div>
+
         </div>
 
-        <div className="rounded-2xl p-4 bg-gray-50 border border-gray-100 space-y-3">
-          <div className="flex gap-3 items-start">
-            <div className="flex flex-col items-center gap-1 pt-1">
-              <div className="w-3 h-3 rounded-full bg-blue-600" />
-              <div className="w-0.5 h-8 bg-gray-300" />
-              <div className="w-3 h-3 rounded-full bg-green-600" />
-              <div className="w-0.5 h-8 bg-gray-300" />
-              <div className="w-3 h-3 rounded-full bg-red-500" />
+        {/* Passenger Info Section */}
+        <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100 flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl shadow-lg border-2 border-white">
+              👤
             </div>
-            <div className="flex-1 space-y-4">
-              <div>
-                <p className="text-xs text-gray-400 font-medium">Your location</p>
-                <p className="text-sm font-semibold text-gray-800 leading-snug">{riderAddress}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 font-medium">Pickup — {passengerName}</p>
-                <p className="text-sm font-semibold text-gray-800 leading-snug">{passengerAddress}</p>
-                {passengerPhone && (
-                  <a href={`tel:${passengerPhone}`} className="text-xs text-blue-600 font-medium mt-0.5 inline-block">
-                    {passengerPhone}
-                  </a>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 font-medium">Destination</p>
-                <p className="text-sm font-semibold text-gray-800">St Aloysius College, Mangalore</p>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-gray-900 leading-tight">{passengerName}</h3>
+              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Verified Passenger</p>
+            </div>
+            {passengerPhone && (
+              <a
+                href={`tel:${passengerPhone}`}
+                className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-md border border-blue-50 active:scale-90 transition-transform"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                </svg>
+              </a>
+            )}
+          </div>
+
+
+          <div className="flex flex-col gap-y-5 pt-2">
+
+            <div className="space-y-1">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.15em] block">
+                Pickup Location
+              </span>
+              <div className="flex items-start gap-2.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500 mt-1 shrink-0 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                <p className="text-sm font-semibold text-gray-700 leading-snug">
+                  {passengerAddress}
+                </p>
               </div>
             </div>
+
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.15em] block">
+                Distance
+              </span>
+              <p className="text-base font-semibold text-gray-700">
+                {Number(distanceKm).toFixed(1)} km
+              </p>
+            </div>
+
+            <div className="space-y-0.5">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.15em] block">
+                Departure
+              </span>
+              <p className="text-base font-semibold text-orange-600 uppercase">
+                {departLabel}
+              </p>
+            </div>
+
           </div>
+
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl p-3 text-center bg-blue-50 border border-blue-100">
-            <p className="text-xs text-gray-400 mb-0.5">Distance</p>
-            <p className="text-base font-bold text-gray-800">{Number(distanceKm).toFixed(1)} km</p>
-          </div>
-          <div className="rounded-xl p-3 text-center bg-green-50 border border-green-100">
-            <p className="text-xs text-gray-400 mb-0.5">You Earn</p>
-            <p className="text-base font-bold text-green-600">₹{fare}</p>
-          </div>
-          <div className="rounded-xl p-3 text-center bg-orange-50 border border-orange-100">
-            <p className="text-xs text-gray-400 mb-0.5">Departs</p>
-            <p className="text-sm font-bold text-orange-600">{departLabel}</p>
-          </div>
+
+
+
+        {/* Earnings Section */}
+        <div className="bg-emerald-700 rounded-2xl py-4 flex flex-col items-center justify-center">
+          <p className="text-[13px] text-emerald-100 font-semibold uppercase tracking-wide mb-1">
+            ESTIMATED EARNINGS
+          </p>
+          <p className="text-3xl font-bold text-white">
+            ₹{fare}
+          </p>
         </div>
 
-        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        {/* Action Button Area */}
+        <div className="mt-auto pt-4 pb-2">
+          {error && (
+            <div className="mb-4 bg-red-50 p-3 rounded-2xl border border-red-100 flex items-center gap-3">
+              <span className="text-red-500 text-lg">⚠️</span>
+              <p className="text-red-600 text-xs font-bold uppercase tracking-wide">{error}</p>
+            </div>
+          )}
 
-        {canDepart ? (
-          <SwipeButton
-            label="Slide to Go Pick Up Passenger"
-            color="#16a34a"
-            disabled={loading}
-            onSwipeComplete={handleGoPickUp}
-          />
-        ) : (
-          <div className="w-full py-4 rounded-2xl bg-gray-100 text-center text-gray-500 font-semibold text-sm">
-            Wait until {departLabel}
-          </div>
-        )}
+          {canDepart ? (
+            <SwipeButton
+              label="Slide to Go Pick Up Passenger"
+              color="#16a34a"
+              disabled={loading}
+              onSwipeComplete={handleGoPickUp}
+            />
+          ) : (
+            <div className="w-full py-5 rounded-3xl bg-gray-100 text-center text-gray-500 font-black text-sm uppercase tracking-widest border-2 border-dashed border-gray-200">
+              Wait until {departLabel}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+
   )
 }

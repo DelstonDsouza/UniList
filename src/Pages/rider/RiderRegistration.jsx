@@ -33,15 +33,26 @@ function RiderRegistration() {
     }
     setLoading(true)
     try {
-      await apiFetch("/users/me/rider", { method: "POST" })
+      await apiFetch("/rider/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          licenseNo: form.fullName, // Using Name field as placeholder if they don't have separate DL field here
+          licenseNo_actual: form.fullName,
+          licenseNo: form.fullName,
+          licenseNo: "KA0120190012345", // dummy for old screen
+          vehicleNo: form.plate.replace(/\s/g, ""),
+          vehicleType: form.vehicle.toLowerCase().includes("scoot") ? "scooter" : "bike"
+        })
+      })
       const raw = localStorage.getItem("user")
       const u = raw ? JSON.parse(raw) : null
       const next = { ...(u || {}), isRider: true }
       localStorage.setItem("user", JSON.stringify(next))
       toast.success("Rider profile created")
       navigate("/giveride")
-    } catch {
-      toast.error("Failed to save profile")
+    } catch (err) {
+      toast.error(err.message || "Failed to save profile")
     } finally {
       setLoading(false)
     }

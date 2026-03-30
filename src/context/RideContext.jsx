@@ -48,7 +48,10 @@ export function RideProvider({ children }) {
   useEffect(() => { viewStateRef.current = viewState }, [viewState])
 
   // ── Computed global flags ─────────────────────────────────────────────────
-  const hasActiveRide = !!(activeRide || riderActiveRide)
+  const hasActiveRide = !!(
+    (activeRide && !["completed", "cancelled"].includes(activeRide.status)) ||
+    (riderActiveRide && !["completed", "cancelled"].includes(riderActiveRide.status))
+  )
   const activeRideRole = riderActiveRide ? "rider" : (activeRide ? "passenger" : null)
 
   // ── GPS ───────────────────────────────────────────────────────────────────
@@ -173,8 +176,12 @@ export function RideProvider({ children }) {
     const handleRideStarted = () => setViewState("ongoing")
     const handleReachedDest = (data) => setReachedData(data)
     const handleRideCompleted = (data) => {
-      setCompletedData(data); setReachedData(null); setViewState("completed")
-      setRiderActiveRide(null)
+      setCompletedData(data);
+      setReachedData(null);
+      setViewState("completed");
+      setActiveRide(null);
+      setFareInfo(null);
+      setRiderActiveRide(null);
     }
 
     socket.on("ride:new", handleNewRide)

@@ -20,7 +20,27 @@ router.get("/nearby", auth, wrap(async (req, res) => {
     error: { code: "MISSING_COORDS", message: "lat and lng query params required" },
   })
   const rides = await rideService.getNearbyRides(parseFloat(lat), parseFloat(lng))
-  res.json({ success: true, data: { rides } })
+
+  // Enrichment: fetch rider's vehicle and rating info
+  const riderIds = [...new Set(rides.map(r => String(r.riderId)))]
+  const riders = await User.find({ _id: { $in: riderIds } }, { vehicleNo: 1, ratingSum: 1, ratingCount: 1 }).lean()
+  const riderInfoMap = Object.fromEntries(riders.map(u => [String(u._id), {
+    vehicleNo: u.vehicleNo || "",
+    ratingSum: u.ratingSum || 0,
+    ratingCount: u.ratingCount || 0
+  }]))
+
+  const enriched = rides.map(r => {
+    const info = riderInfoMap[String(r.riderId)] || { vehicleNo: "", ratingSum: 0, ratingCount: 0 }
+    return {
+      ...r,
+      vehicleNo: info.vehicleNo,
+      ratingSum: info.ratingSum,
+      ratingCount: info.ratingCount
+    }
+  })
+
+  res.json({ success: true, data: { rides: enriched } })
 }))
 
 router.post("/:id/request", auth, wrap(async (req, res) => {
@@ -130,7 +150,7 @@ router.get("/history", auth, wrap(async (req, res) => {
 
 router.post("/", auth, wrap(async (req, res) => {
   const {
-    riderName, riderPhone, scooterNumber,
+    riderName, riderPhone,
     pickupLat, pickupLng, currentLat, currentLng,
     departureTime, departureTimeStr, pickupAddress
   } = req.body
@@ -161,7 +181,6 @@ router.post("/", auth, wrap(async (req, res) => {
     riderId: req.user._id,
     riderName: riderName || req.user.firstName || "Rider",
     riderPhone: riderPhone || req.user.phone || "",
-    scooterNumber: scooterNumber || "N/A",
     departureTime: departureTime || null,
     departureTimeStr: departureTimeStr || departureTime || "",
     currentLocation: {

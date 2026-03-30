@@ -35,7 +35,6 @@ const RideSchema = new mongoose.Schema(
     riderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     riderName: { type: String, default: "", trim: true },
     riderPhone: { type: String, default: "", trim: true },
-    scooterNumber: { type: String, default: "N/A", trim: true },
 
     currentLocation: { type: GeoPointSchema, required: true },
     pickupLocation: { type: GeoPointSchema, required: true },

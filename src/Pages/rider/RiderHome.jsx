@@ -613,7 +613,7 @@ export default function RiderHome() {
       </AnimatePresence>
 
 
-      {/* ── SIGN OUT CONFIRMATION POPUP ── */}
+      {/* ── LOG OUT CONFIRMATION POPUP ── */}
       <AnimatePresence>
         {showSignOutConfirm && (
           <motion.div
@@ -630,7 +630,7 @@ export default function RiderHome() {
               className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
             >
               <p className="text-black font-semibold text-[17px] tracking-tight mb-6 mt-2">
-                Are you sure you want to sign out?
+                Are you sure you want to log out?
               </p>
 
               <div className="flex gap-4 justify-center">
@@ -643,7 +643,7 @@ export default function RiderHome() {
                   Cancel
                 </button>
 
-                {/* SIGN OUT */}
+                {/* LOG OUT */}
                 <button
                   onClick={async () => {
                     if (hasActiveRide) {
@@ -657,7 +657,7 @@ export default function RiderHome() {
                   }}
                   className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition-all duration-200 hover:bg-red-500 hover:text-white active:scale-[0.98]"
                 >
-                  Sign Out
+                  Log Out
                 </button>
 
               </div>
@@ -955,11 +955,11 @@ export default function RiderHome() {
                       { label: "Help", onClick: () => setAccountView("help") },
                       { label: "Switch to Passenger", onClick: () => setShowSwitchPassengerConfirm(true) },
                       { label: "Theme", onClick: () => toast.success("Theme feature coming later!") },
-                      { label: "Sign Out", onClick: () => setShowSignOutConfirm(true) }
+                      { label: "Log Out", onClick: () => setShowSignOutConfirm(true) }
                     ].map((item, i, arr) => (
                       <div key={item.label} onClick={item.onClick} className={`flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition ${i !== arr.length - 1 ? "border-b border-gray-300" : ""}`}>
                         <div className="flex items-center gap-3">
-                          <span className={`${item.label === "Sign Out" ? "text-red-400 font-medium" : "text-gray-800 font-medium"} text-[15px]`}>{item.label}</span>
+                          <span className={`${item.label === "Log Out" ? "text-red-400 font-medium" : "text-gray-800 font-medium"} text-[15px]`}>{item.label}</span>
                         </div>
                         <span className="text-gray-400 text-xl">›</span>
                       </div>
