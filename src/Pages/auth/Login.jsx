@@ -1,11 +1,12 @@
 // src/pages/auth/Login.jsx
 
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { auth } from "../../config/firebase"
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth"
 import { apiFetch, setToken } from "../../services/api"
 import { X } from "lucide-react"
+import { toast } from "react-hot-toast" // Added toast for better feedback if available
 
 const terms = [
   {
@@ -99,13 +100,16 @@ function TermsModal({ onClose }) {
 }
 
 export default function Login() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const prefillPhoneFromState = location.state?.prefillPhone || ""
+
   const [step, setStep] = useState(1)
-  const [phone, setPhone] = useState("")
+  const [phone, setPhone] = useState(prefillPhoneFromState)
   const [otp, setOtp] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [showTerms, setShowTerms] = useState(false)
-  const navigate = useNavigate()
 
   const setupRecaptcha = () => {
     if (!window.recaptchaVerifier) {
@@ -119,8 +123,10 @@ export default function Login() {
 
   const sendOtp = async () => {
     setError("")
-    if (phone.length !== 10) {
-      setError("Enter a valid 10-digit mobile number")
+    const phoneRegex = /^[0-9]{10}$/
+
+    if (!phoneRegex.test(phone)) {
+      setError("Please enter a 10-digit mobile number")
       return
     }
     try {
@@ -135,7 +141,7 @@ export default function Login() {
       setStep(2)
     } catch (err) {
       console.error("OTP send error:", err)
-      setError("Failed to send OTP. Try again.")
+      setError("Please check the mobile number and try again.")
     } finally {
       setLoading(false)
     }
@@ -164,17 +170,22 @@ export default function Login() {
       }))
 
       if (!data.profileComplete) {
-        navigate("/register-details")
+        navigate("/register")
         return
       }
 
       // ── Check role & active ride, redirect accordingly ──
       try {
-        const profile = await apiFetch("/auth/profile")
-        const isRider = profile?.user?.isRider === true
+        console.log("🔍 Fetching profile...")
+        const profile = await apiFetch("/auth/me")
+        const userData = profile?.user
+        const isRider = userData?.isRider === true
+
+        console.log("👤 User role:", isRider ? "rider" : "passenger")
 
         if (isRider) {
           // Check if rider has an active ride in progress
+          console.log("🚗 Checking active rides for rider...")
           const ridesData = await apiFetch("/rides/my")
           const rides = ridesData?.data?.rides || []
           const activeRide = rides.find(r =>
@@ -182,6 +193,7 @@ export default function Login() {
           )
 
           if (activeRide) {
+            console.log("🔄 Restoring active ride:", activeRide._id)
             // Restore rider to the correct active page
             if (activeRide.status === "locked") {
               navigate("/ride-confirmed", {
@@ -217,14 +229,15 @@ export default function Login() {
         } else {
           navigate("/dashboard", { replace: true })
         }
-      } catch {
+      } catch (profileErr) {
+        console.error("Profile fetch/redirect error:", profileErr)
         // Fallback if profile fetch fails
         navigate("/dashboard", { replace: true })
       }
 
     } catch (err) {
       console.error("OTP verify error:", err)
-      setError("Invalid OTP")
+      setError(err.message || "The OTP entered is incorrect. Please try again")
     } finally {
       setLoading(false)
     }
@@ -249,7 +262,7 @@ export default function Login() {
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold mb-6">Let's get you trip-ready!</h1>
+        <h1 className="text-2xl font-semibold mb-6">Let's get you trip-ready!</h1><br></br>
 
         {step === 1 && (
           <div className="bg-white p-5 rounded-2xl shadow-sm">
@@ -263,7 +276,14 @@ export default function Login() {
                 placeholder="10-digit mobile number"
                 className="flex-1 bg-gray-200 p-3 rounded-lg outline-none"
                 value={phone}
-                onChange={e => setPhone(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, "")
+                  if (value.length <= 10) {
+                    setPhone(value)
+                  }
+                }}
+                maxLength={10}
+                inputMode="numeric"
               />
             </div>
           </div>
@@ -271,14 +291,29 @@ export default function Login() {
 
         {step === 2 && (
           <div className="bg-white p-5 rounded-2xl shadow-sm">
-            <label className="text-gray-600 text-sm">Enter OTP sent to +91{phone}</label>
-            <input
-              type="text"
-              placeholder="Enter 6 digit OTP"
-              className="w-full bg-gray-200 p-3 rounded-lg mt-3 outline-none"
-              value={otp}
-              onChange={e => setOtp(e.target.value)}
-            />
+            <div className="flex flex-col gap-3">
+
+
+              <p className="text-gray-500 text-sm">
+                Enter OTP Sent to +91{phone}
+              </p>
+
+              <input
+                type="tel"
+                placeholder="Enter 6 digit OTP"
+                className="w-full bg-gray-200 p-3 rounded-lg outline-none mt-2"
+                value={otp}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, "")
+                  if (value.length <= 6) {
+                    setOtp(value)
+                  }
+                }}
+                maxLength={6}
+                inputMode="numeric"
+              />
+
+            </div>
           </div>
         )}
 

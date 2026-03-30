@@ -8,12 +8,12 @@ export default function RegisterDetails() {
   const navigate = useNavigate()
 
   const [universityId, setUniversityId] = useState("")
-  const [email,        setEmail]        = useState("")
-  const [fetched,      setFetched]      = useState(null)
-  const [fetchError,   setFetchError]   = useState("")
-  const [fetching,     setFetching]     = useState(false)
-  const [submitting,   setSubmitting]   = useState(false)
-  const [submitError,  setSubmitError]  = useState("")
+  const [email, setEmail] = useState("")
+  const [fetched, setFetched] = useState(null)
+  const [fetchError, setFetchError] = useState("")
+  const [fetching, setFetching] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
 
   const handleFetch = async () => {
     const uid = universityId.trim().toUpperCase()
@@ -38,32 +38,38 @@ export default function RegisterDetails() {
       setFetchError("Please fetch your University ID first")
       return
     }
-    if (!email.trim()) {
-      setSubmitError("Email is required")
+
+    if (!email.trim() || !email.includes("@")) {
+      setSubmitError("Please enter a valid email address")
       return
     }
 
-    setSubmitting(true)
-    setSubmitError("")
-
-    try {
-      await apiFetch("/auth/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName:    fetched.firstName,
-          lastName:     fetched.lastName,
-          gender:       fetched.gender,
-          universityId: fetched.universityId,
-          email:        email.trim().toLowerCase(),
-        }),
-      })
-
-      navigate("/select-role")
-    } catch (err) {
-      setSubmitError(err.message || "Failed to save profile")
-    } finally {
-      setSubmitting(false)
+    const token = localStorage.getItem("token")
+    if (token) {
+      // SCENARIO 2: Finalizing profile after login
+      setSubmitting(true)
+      try {
+        await apiFetch("/auth/profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: fetched.firstName,
+            lastName: fetched.lastName,
+            gender: fetched.gender,
+            universityId: fetched.universityId,
+            email,
+          }),
+        })
+        navigate("/dashboard", { replace: true })
+      } catch (err) {
+        setSubmitError(err.message || "Failed to save profile")
+      } finally {
+        setSubmitting(false)
+      }
+    } else {
+      // SCENARIO 1: First-time registration (before login)
+      // Redirect to login with the fetched phone number
+      navigate("/login", { state: { prefillPhone: fetched.phone } })
     }
   }
 
@@ -71,10 +77,8 @@ export default function RegisterDetails() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow p-8 space-y-5">
 
-        <h1 className="text-2xl font-bold text-center">Complete Your Profile</h1>
-        <p className="text-sm text-gray-500 text-center">
-          Enter your University ID to auto-fill your details
-        </p>
+        <h1 className="text-2xl font-bold text-center">Complete Your Profile</h1><br></br>
+
 
         {/* University ID + Fetch button */}
         <div>
@@ -140,6 +144,22 @@ export default function RegisterDetails() {
           />
         </div>
 
+        <div>
+          <label className="text-sm font-medium text-gray-700 block mb-1">Mobile Number</label>
+          <div className="flex gap-2">
+            <div className="bg-gray-100 px-4 py-3 rounded-lg text-sm text-gray-500 cursor-not-allowed">
+              +91
+            </div>
+
+            <input
+              type="text"
+              value={fetched?.phone || ""}
+              readOnly
+              placeholder="Auto-filled"
+              className="w-full bg-gray-100 p-3 rounded-lg text-sm text-gray-500 cursor-not-allowed"
+            />
+          </div>
+        </div>
         {/* Email — user must enter this */}
         <div>
           <label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
@@ -160,16 +180,16 @@ export default function RegisterDetails() {
         {fetched && !fetchError && (
           <div className="flex items-center gap-2 text-green-600 text-sm">
             <span>✓</span>
-            <span>Student record found — {fetched.firstName} {fetched.lastName}</span>
+            <span>Student record found - {fetched.firstName} {fetched.lastName}</span>
           </div>
         )}
 
         <button
           onClick={handleSubmit}
-          disabled={submitting || !fetched}
+          disabled={!fetched}
           className="w-full bg-black text-white py-3 rounded-lg font-medium disabled:opacity-50 transition"
         >
-          {submitting ? "Saving..." : "Register"}
+          Proceed to Login & Verify OTP
         </button>
 
         <p className="text-center text-sm text-gray-500">

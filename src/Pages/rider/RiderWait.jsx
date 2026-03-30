@@ -7,6 +7,8 @@ import L from "leaflet"
 import { useParams, useLocation, useNavigate } from "react-router-dom"
 import { socket, connectSocket, disconnectSocket } from "../../services/socket"
 import { apiFetch } from "../../services/api"
+import { Compass, Clock, User } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -55,7 +57,7 @@ function RoutePolyline({ from, to }) {
   return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.85 }} />
 }
 
-// ── Reverse geocode ────────────────────────────────────────────────────────────
+// \u2500\u2500 Reverse geocode \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 async function reverseGeocode(lat, lng) {
   try {
     const res = await fetch(
@@ -111,7 +113,7 @@ export default function RiderWait() {
     return () => clearInterval(t)
   }, [])
 
-  // ── Prevent Back Navigation ───────────────────────────────────────────────────
+  // \u2500\u2500 Prevent Back Navigation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     window.history.pushState(null, "", window.location.href)
     const handlePopState = () => {
@@ -162,7 +164,7 @@ export default function RiderWait() {
       navigatedRef.current = true
       setPassengerJoined(true)
       setTimeout(() => {
-        navigate("/ride-confirmed", {
+        navigate(`/ride-confirmed/${data.rideId}`, {
           replace: true,
           state: {
             rideId: data.rideId,
@@ -210,7 +212,7 @@ export default function RiderWait() {
   const collegeCoords = collegeLocation || [12.8721, 74.8453]
 
   return (
-    <div className="fixed inset-0 bg-white overflow-hidden">
+    <div className="fixed inset-0 bg-white overflow-hidden pb-20">
 
 
       {/* NO PASSENGERS POPUP */}
@@ -287,14 +289,14 @@ export default function RiderWait() {
       </div>
 
       {/* BOTTOM SHEET */}
-      <div className="absolute bottom-0 w-full px-4 pb-5 z-10">
+      <div className="absolute bottom-20 w-full px-4 pb-5 z-10">
         <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-xl space-y-4">
 
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Your Trip</p>
           </div>
 
-          {/* Route info — pickup, destination, departs all on left */}
+          {/* Route info \u2014 pickup, destination, departs all on left */}
           <div className="flex gap-3 items-stretch">
             <div className="flex flex-col items-center gap-1 py-1">
               <div className="w-2.5 h-2.5 rounded-full bg-blue-600 flex-shrink-0" />
@@ -349,6 +351,33 @@ export default function RiderWait() {
           </div>
         </div>
       </div>
+      <BottomNav />
+    </div>
+  )
+}
+
+function BottomNav() {
+  const navigate = useNavigate();
+  const tabs = [
+    { id: "home",    icon: Compass, label: "Explore" },
+    { id: "history", icon: Clock,   label: "History" },
+    { id: "account", icon: User,    label: "Profile" }
+  ];
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-2 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
+      {tabs.map((t) => {
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.id}
+            onClick={() => navigate("/rider-home", { state: { tab: t.id } })}
+            className="flex flex-col items-center gap-1.5 flex-1 relative group"
+          >
+            <Icon className="w-6 h-6 transition-colors duration-300 text-gray-400 group-hover:text-gray-600" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold transition-colors text-gray-400 group-hover:text-gray-600">{t.label}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }

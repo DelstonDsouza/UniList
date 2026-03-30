@@ -6,6 +6,8 @@ import { JWT_SECRET } from "../config/env.js"
 import User from "../models/User.js"
 import Student from "../models/Student.js"
 import Ride from "../models/Ride.js"
+import firebaseAdmin from "../config/firebaseAdmin.js"
+import { isDBReady, mem } from "../config/db.js"
 
 const router = Router()
 
@@ -15,28 +17,57 @@ router.post("/firebase", async (req, res) => {
     const { idToken } = req.body
     if (!idToken) return res.status(400).json({ detail: "Missing idToken" })
 
-    const firebaseAdmin = (await import("../config/firebaseAdmin.js")).default
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken)
 
-    const user = await User.findOneAndUpdate(
-      { firebaseUid: decoded.uid },
-      {
-        $set:         { phone: decoded.phone_number || "" },
-        $setOnInsert: {
-          firebaseUid:  decoded.uid,
-          firstName:    "",
-          lastName:     "",
-          email:        "",
-          gender:       "",
-          universityId: "",
-          isRider:      false,
-          role:         "student",
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    )
+    let user;
+    if (!isDBReady()) {
+      // In-memory fallback
+      console.log("⚠️ DB not ready, using memory fallback for auth")
+      const existingMemUser = [...mem.users.values()].find(u => u.firebaseUid === decoded.uid)
+      if (existingMemUser) {
+        user = existingMemUser
+      } else {
+        user = {
+          _id: "mem:" + Date.now(),
+          firebaseUid: decoded.uid,
+          phone: decoded.phone_number || "",
+          firstName: "", lastName: "", email: "", gender: "", universityId: "",
+          isRider: false, role: "student"
+        }
+        mem.users.set(String(user._id), user)
+      }
+    } else {
+      // Check if this phone exists in our Student database to auto-fill more details
+      const student = await Student.findOne({ 
+        phone: decoded.phone_number?.replace(/\D/g, "").slice(-10) || "" 
+      })
 
-    console.log("Firebase auth:", user._id, user.phone)
+      user = await User.findOneAndUpdate(
+        { firebaseUid: decoded.uid },
+        {
+          $set: { phone: decoded.phone_number || "" },
+          $setOnInsert: {
+            firebaseUid:  decoded.uid,
+            firstName:    student?.firstName || "",
+            lastName:     student?.lastName  || "",
+            gender:       student?.gender    || "",
+            universityId: student?.universityId || "",
+            isRider:      false,
+            role:         "student",
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      )
+      
+      // If we found a student and it's not registered yet, links it
+      if (student && !student.isRegistered) {
+        await Student.findByIdAndUpdate(student._id, {
+          $set: { isRegistered: true, registeredBy: user._id }
+        })
+      }
+    }
+
+
 
     const token = jwt.sign({ uid: String(user._id) }, JWT_SECRET, { expiresIn: "7d" })
 

@@ -12,14 +12,16 @@ const mem = {
 
 async function initDB() {
     try {
+        console.log("📡 Connecting to MongoDB:", MONGO_URL)
         await mongoose.connect(MONGO_URL, {
             serverSelectionTimeoutMS: 5000,
         })
         dbReady = true
-        console.log("MongoDB connected")
+        console.log("✅ MongoDB connected successfully")
     } catch (err) {
         dbReady = false
-        console.error("MongoDB connection error:", err.message)
+        console.error("❌ MongoDB connection error:", err.message)
+        throw err // Re-throw so the caller (index.js) knows it failed
     }
 }
 

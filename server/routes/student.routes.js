@@ -6,9 +6,8 @@ import auth from "../middleware/auth.js"
 
 const router = Router()
 
-// GET /api/students/:universityId
-// Returns student details if found and not already registered
-router.get("/:universityId", auth, async (req, res) => {
+// GET /api/students/:universityId (PUBLIC)
+router.get("/:universityId", async (req, res) => {
   try {
     const uid = req.params.universityId.trim().toUpperCase()
     const student = await Student.findOne({ universityId: uid })
@@ -20,12 +19,9 @@ router.get("/:universityId", auth, async (req, res) => {
       })
     }
 
-    if (student.isRegistered && String(student.registeredBy) !== String(req.user._id)) {
-      return res.status(409).json({
-        success: false,
-        error: { code: "ALREADY_REGISTERED", message: "This University ID is already registered" },
-      })
-    }
+    // We return details even if registered, so user can finish profile setup if needed.
+    // The uniqueness check is handled in the profile update route.
+
 
     return res.json({
       success: true,
@@ -34,6 +30,7 @@ router.get("/:universityId", auth, async (req, res) => {
         firstName:    student.firstName,
         lastName:     student.lastName,
         gender:       student.gender,
+        phone:        student.phone,
         isRegistered: student.isRegistered,
       },
     })

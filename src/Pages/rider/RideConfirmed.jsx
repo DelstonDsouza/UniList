@@ -4,9 +4,11 @@ import { useEffect, useMemo, useCallback, useRef, useState } from "react"
 import { MapContainer, TileLayer, Polyline, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { apiFetch } from "../../services/api"
 import SwipeButton from "../../components/ui/SwipeButton"
+import { Compass, Clock, User } from "lucide-react"
+import { motion } from "framer-motion"
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -90,33 +92,67 @@ function RoutePolyline({ waypoints }) {
 const COLLEGE = [12.8698, 74.8425]
 
 export default function RideConfirmed() {
+  const { id } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
 
+  const [rideData, setRideData] = useState(location.state || null)
+  const [loading, setLoading] = useState(!rideData)
+  const [error, setError] = useState("")
+
+  // Location names
+  const [riderAddress, setRiderAddress] = useState("Getting location…")
+  const [passengerAddress, setPassengerAddress] = useState("Getting location…")
+
+  // Fetch ride if not in state
+  useEffect(() => {
+    if (rideData && rideData.passengerLat && rideData.passengerLng) return
+    setLoading(true)
+    apiFetch(`/rides/${id}`)
+      .then(res => {
+        const r = res.data.ride
+        const mapped = {
+          rideId: r._id,
+          userLocation: r.currentLocation?.coordinates ? [r.currentLocation.coordinates[1], r.currentLocation.coordinates[0]] : null,
+          collegeLocation: COLLEGE,
+          departureTime: r.departureTimeStr || r.departureTime,
+          departureTimeRaw: r.departureTime,
+          passengerName: r.passenger?.name || "Passenger",
+          passengerPhone: r.passenger?.phone || "",
+          passengerLat: r.passenger?.location?.coordinates?.[1] || null,
+          passengerLng: r.passenger?.location?.coordinates?.[0] || null,
+          fare: r.fare?.amount || 0,
+          distanceKm: r.fare?.distanceKm || 0,
+        }
+        setRideData(mapped)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error("Fetch ride failed:", err)
+        setError("Could not load ride details.")
+        setLoading(false)
+      })
+  }, [id]) // eslint-disable-line
+
   const {
-    rideId,
-    userLocation,
-    collegeLocation,
-    departureTime,
-    departureTimeRaw,
+    rideId = id,
+    userLocation = null,
+    collegeLocation = COLLEGE,
+    departureTime = "",
+    departureTimeRaw = "",
     passengerName = "Passenger",
     passengerPhone = "",
     passengerLat = null,
     passengerLng = null,
     fare = 0,
     distanceKm = 0,
-  } = location.state || {}
+  } = rideData || {}
 
   const destination = collegeLocation || COLLEGE
   const passengerPickup = passengerLat && passengerLng
     ? [Number(passengerLat), Number(passengerLng)] : null
 
-  const [riderAddress, setRiderAddress] = useState("Getting location…")
-  const [passengerAddress, setPassengerAddress] = useState("Getting location…")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-
-  // ── Prevent Back Navigation ───────────────────────────────────────────────────
+  // \u2500\u2500 Prevent Back Navigation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     window.history.pushState(null, "", window.location.href)
     const handlePopState = () => {
@@ -134,9 +170,9 @@ export default function RideConfirmed() {
   useEffect(() => {
     if (passengerLat && passengerLng)
       reverseGeocode(Number(passengerLat), Number(passengerLng)).then(setPassengerAddress)
-    else
+    else if (!loading)
       setPassengerAddress("Location not available")
-  }, [passengerLat, passengerLng])
+  }, [passengerLat, passengerLng, loading])
 
   const [canDepart, setCanDepart] = useState(!departureTimeRaw)
   const [departLabel, setDepartLabel] = useState(departureTime || "Now")
@@ -144,7 +180,9 @@ export default function RideConfirmed() {
   useEffect(() => {
     if (!departureTimeRaw) { setCanDepart(true); return }
     const check = () => {
-      const [h, m] = departureTimeRaw.split(":").map(Number)
+      const parts = String(departureTimeRaw).split(":")
+      if (parts.length < 2) { setCanDepart(true); return }
+      const [h, m] = parts.map(Number)
       const target = new Date(); target.setHours(h, m, 0, 0)
       if (new Date() >= target) { setCanDepart(true); setDepartLabel("Now") }
       else { setCanDepart(false); setDepartLabel(departureTime || departureTimeRaw) }
@@ -167,7 +205,7 @@ export default function RideConfirmed() {
     setError("")
     try {
       await apiFetch(`/rides/${rideId}/pickup-start`, { method: "POST" })
-      navigate("/ride-pickup", {
+      navigate(`/ride-pickup/${rideId}`, {
         replace: true,
         state: {
           rideId,
@@ -188,20 +226,31 @@ export default function RideConfirmed() {
   }, [rideId, navigate, userLocation, destination, passengerPickup,
     passengerName, passengerPhone, fare, distanceKm, departureTime])
 
+  if (loading && !rideData) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-white gap-4">
+        <div className="w-10 h-10 border-4 border-gray-100 border-t-blue-600 rounded-full animate-spin" />
+        <p className="text-gray-500 font-medium anim-pulse">Syncing ride details…</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
       <div style={{ height: "52vh", width: "100%", flexShrink: 0 }}>
-        <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
-          <TileLayer
-            url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
-            attribution="&copy; OpenStreetMap contributors"
-            maxZoom={20}
-          />
-          <RoutePolyline waypoints={waypoints} />
-          {userLocation && <PinMarker position={userLocation} color="#2563EB" emoji="🏍" label="You" />}
-          {passengerPickup && <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />}
-          <PinMarker position={destination} color="#DC2626" emoji="🎓" label="St Aloysius" />
-        </MapContainer>
+        {center && (
+          <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
+            <TileLayer
+              url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+              attribution="&copy; OpenStreetMap contributors"
+              maxZoom={20}
+            />
+            <RoutePolyline waypoints={waypoints} />
+            {userLocation && <PinMarker position={userLocation} color="#2563EB" emoji="🏍" label="You" />}
+            {passengerPickup && <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />}
+            <PinMarker position={destination} color="#DC2626" emoji="🎓" label="St Aloysius" />
+          </MapContainer>
+        )}
       </div>
 
       <div
@@ -214,23 +263,18 @@ export default function RideConfirmed() {
           zIndex: 10
         }}
       >
-        {/* Drag Indicator */}
         <div className="flex justify-center">
           <div className="w-12 h-1.5 rounded-full bg-gray-200" />
         </div>
 
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[15px] font-bold text-green-700 uppercase tracking-[0.2em] mb-1">
               Ride Confirmed
             </p>
-
           </div>
-
         </div>
 
-        {/* Passenger Info Section */}
         <div className="bg-blue-50/50 rounded-3xl p-5 border border-blue-100 flex flex-col gap-4">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl shadow-lg border-2 border-white">
@@ -252,9 +296,7 @@ export default function RideConfirmed() {
             )}
           </div>
 
-
           <div className="flex flex-col gap-y-5 pt-2">
-
             <div className="space-y-1">
               <span className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.15em] block">
                 Pickup Location
@@ -284,15 +326,9 @@ export default function RideConfirmed() {
                 {departLabel}
               </p>
             </div>
-
           </div>
-
         </div>
 
-
-
-
-        {/* Earnings Section */}
         <div className="bg-emerald-700 rounded-2xl py-4 flex flex-col items-center justify-center">
           <p className="text-[13px] text-emerald-100 font-semibold uppercase tracking-wide mb-1">
             ESTIMATED EARNINGS
@@ -302,11 +338,10 @@ export default function RideConfirmed() {
           </p>
         </div>
 
-        {/* Action Button Area */}
         <div className="mt-auto pt-4 pb-2">
           {error && (
             <div className="mb-4 bg-red-50 p-3 rounded-2xl border border-red-100 flex items-center gap-3">
-              <span className="text-red-500 text-lg">⚠️</span>
+              <span className="text-red-500 text-lg">⚠</span>
               <p className="text-red-600 text-xs font-bold uppercase tracking-wide">{error}</p>
             </div>
           )}
@@ -325,7 +360,29 @@ export default function RideConfirmed() {
           )}
         </div>
       </div>
+      <BottomNav />
     </div>
+  )
+}
 
+function BottomNav() {
+  const navigate = useNavigate();
+  const tabs = [
+    { id: "home", icon: Compass, label: "Explore" },
+    { id: "history", icon: Clock, label: "History" },
+    { id: "account", icon: User, label: "Profile" }
+  ];
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-2 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
+      {tabs.map((t) => {
+        const Icon = t.icon;
+        return (
+          <button key={t.id} onClick={() => navigate("/rider-home", { state: { tab: t.id } })} className="flex flex-col items-center gap-1.5 flex-1 relative group">
+            <Icon className="w-6 h-6 transition-colors duration-300 text-gray-400 group-hover:text-gray-600" />
+            <span className={`text-[10px] uppercase tracking-wider font-semibold transition-colors text-gray-400 group-hover:text-gray-600`}>{t.label}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 }

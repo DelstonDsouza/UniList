@@ -28,24 +28,20 @@ export const io = new Server(server, {
 io.on("connection", (socket) => {
   console.log("🔌 Socket connected:", socket.id)
 
-  // Rider joins a room named after their rideId — listens for passenger events
   socket.on("join:ride", (rideId) => {
     socket.join(`ride:${rideId}`)
     console.log(`🚗 Rider joined room ride:${rideId}`)
   })
 
-  // Passenger joins same room — listens for rider location updates
   socket.on("join:passenger", (rideId) => {
     socket.join(`ride:${rideId}`)
     console.log(`🧍 Passenger joined room ride:${rideId}`)
   })
 
-  // Rider broadcasts live location → passenger receives it
   socket.on("rider:location", ({ rideId, lat, lng }) => {
     socket.to(`ride:${rideId}`).emit("rider:location", { lat, lng })
   })
 
-  // Passenger joins a "riders" broadcast room to receive new ride notifications
   socket.on("join:riders-watch", () => {
     socket.join("riders-watch")
     console.log(`👀 Passenger watching for rides: ${socket.id}`)
@@ -71,9 +67,6 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }))
 // ── Static uploads ───────────────────────────────────────────────────────────
 app.use("/uploads", express.static(path.join(process.cwd(), "server_uploads")))
 
-// ── Database ─────────────────────────────────────────────────────────────────
-initDB()
-
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => res.json({ ok: true }))
 
@@ -90,6 +83,16 @@ app.use((err, _req, res, _next) => {
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-server.listen(PORT, () => {
-  console.log(`🚀 Server running http://localhost:${PORT}`)
-})
+const startServer = async () => {
+    try {
+        await initDB()
+        server.listen(PORT, () => {
+            console.log(`🚀 Server running http://localhost:${PORT}`)
+        })
+    } catch (err) {
+        console.error("❌ Critical server startup error:", err)
+        process.exit(1)
+    }
+}
+
+startServer()

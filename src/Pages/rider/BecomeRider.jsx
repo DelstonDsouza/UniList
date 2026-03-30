@@ -20,14 +20,13 @@ function formatVehiclePlate(raw) {
   return parts.join(" ")
 }
 
-const LICENSE_REGEX = /^[A-Z]{2}\d{2}\s?\d{4}\d{7}$/
+const LICENSE_REGEX = /^[A-Z]{2}\d{2}\d{4}\d{7}$/
 
 function validateLicense(val) {
   const clean = val.replace(/\s/g, "")
   if (!clean) return "License number is required"
   if (clean.length < 15) return "License number must be 15 characters"
   if (!/^[A-Z]{2}/.test(clean)) return "Must start with 2 state letters (e.g. KA)"
-  if (!LICENSE_REGEX.test(val.replace(/\s/g, ""))) return "Enter a valid license number"
   return ""
 }
 

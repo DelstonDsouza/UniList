@@ -47,8 +47,8 @@ const reverseGeocode = async (lat, lng) => {
     const data = await res.json()
     if (!data || !data.display_name) throw new Error("No data")
     return extractShortName(data)
-  } catch { 
-    return "Current Location" 
+  } catch {
+    return "Current Location"
   }
 }
 
@@ -281,6 +281,7 @@ export default function PassengerDashboard() {
   const [routePath, setRoutePath] = useState([])
   const [mapCenter, setMapCenter] = useState(ST_ALOYSIUS) // default center Mangalore
   const [mapBounds, setMapBounds] = useState([ST_ALOYSIUS])
+  const [showRoleBlockedPopup, setShowRoleBlockedPopup] = useState(false)
 
   // History state
   const [history, setHistory] = useState([])
@@ -527,7 +528,7 @@ export default function PassengerDashboard() {
               exit={{ scale: 0.95 }}
               className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
             >
-              <p className="text-black font-bold text-[17px] tracking-tight mb-6 mt-2">you want to switch to rider ?</p>
+              <p className="text-black font-semibold text-[17px] tracking-tight mb-6 mt-2">Are you sure you want to switch to rider ?</p>
               <div className="flex gap-4 justify-center">
                 <button onClick={() => setShowSwitchRiderConfirm(false)} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
                   No
@@ -582,19 +583,48 @@ export default function PassengerDashboard() {
                 {/* YES */}
                 <button
                   onClick={async () => {
-                    if (hasActiveRide) {
-                      setShowSignOutConfirm(false)
-                      toast.error("Complete your active ride before signing out.")
-                      return
-                    }
+                    if (hasActiveRide) return
                     setShowSignOutConfirm(false)
                     await handleLogout()
                   }}
-                  className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-red-500 hover:text-white active:scale-[0.98]"
+                  disabled={hasActiveRide}
+                  className={`flex-1 py-3 rounded-xl font-semibold transition ${hasActiveRide
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-200 text-black hover:bg-red-500 hover:text-white active:scale-[0.98]"
+                    }`}
                 >
                   Log Out
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showRoleBlockedPopup && (
+          <motion.div
+            className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/40"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
+            >
+              <p className="text-black font-semibold text-[17px] mb-6">
+                You cannot switch roles during an active ride.
+              </p>
+
+              <button
+                onClick={() => setShowRoleBlockedPopup(false)}
+                className="w-32 py-3 rounded-xl bg-red-500 text-white font-semibold"
+              >
+                OK
+              </button>
             </motion.div>
           </motion.div>
         )}
@@ -765,7 +795,7 @@ export default function PassengerDashboard() {
                     {ride.distanceKm != null && <span className="text-[10px] text-gray-400 font-medium">{ride.distanceKm} km</span>}
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <div className="flex items-start gap-2">
                     <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
@@ -782,7 +812,7 @@ export default function PassengerDashboard() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
                   <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Fare Paid</span>
                   <span className="text-base font-bold text-teal-600">₹{ride.fare || 0}</span>
@@ -839,7 +869,8 @@ export default function PassengerDashboard() {
                       label: "Become a Rider",
                       onClick: () => {
                         if (hasActiveRide) {
-                          toast.error("Complete your active ride before changing roles.")
+                          setShowSwitchRiderConfirm(false)
+                          setShowRoleBlockedPopup(true)
                           return
                         }
                         navigate("/become-rider")

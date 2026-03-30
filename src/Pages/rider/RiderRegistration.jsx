@@ -37,10 +37,8 @@ function RiderRegistration() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          licenseNo: form.fullName, // Using Name field as placeholder if they don't have separate DL field here
+          licenseNo: "KA0120190012345", // Placeholder dummy valid license
           licenseNo_actual: form.fullName,
-          licenseNo: form.fullName,
-          licenseNo: "KA0120190012345", // dummy for old screen
           vehicleNo: form.plate.replace(/\s/g, ""),
           vehicleType: form.vehicle.toLowerCase().includes("scoot") ? "scooter" : "bike"
         })

@@ -256,7 +256,7 @@ export default function RiderHome() {
       ))
       setSavedRides(updated)
       localStorage.setItem("savedRides", JSON.stringify(updated))
-      showSaveNotification("Ride removed from saved list")
+      showSaveNotification("")
       return
     }
     const newSaved = {
@@ -357,7 +357,7 @@ export default function RiderHome() {
   const [suggestions, setSuggestions] = useState([])
   const [showDrop, setShowDrop] = useState(false)
   const [loadingSugg, setLoadingSugg] = useState(false)
-
+  const [showActiveRideWarning, setShowActiveRideWarning] = useState(false)
   const isUserTyping = useRef(false)
   const debTimer = useRef(null)
   const dropRef = useRef(null)
@@ -590,7 +590,7 @@ export default function RiderHome() {
               exit={{ scale: 0.95 }}
               className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
             >
-              <p className="text-black font-bold text-[17px] tracking-tight mb-6 mt-2">you want to switch to passenger ?</p>
+              <p className="text-black font-semibold text-[17px] tracking-tight mb-6 mt-2">Are you sure you want to switch to passenger ?</p>
               <div className="flex gap-4 justify-center">
                 <button onClick={() => setShowSwitchPassengerConfirm(false)} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
                   No
@@ -598,7 +598,7 @@ export default function RiderHome() {
                 <button onClick={async () => {
                   if (hasActiveRide) {
                     setShowSwitchPassengerConfirm(false)
-                    toast.error("Complete your active ride before switching roles.")
+                    setShowActiveRideWarning(true)
                     return
                   }
                   setShowSwitchPassengerConfirm(false)
@@ -646,16 +646,16 @@ export default function RiderHome() {
                 {/* LOG OUT */}
                 <button
                   onClick={async () => {
-                    if (hasActiveRide) {
-                      setShowSignOutConfirm(false)
-                      toast.error("Complete your active ride before signing out.")
-                      return
-                    }
+                    if (hasActiveRide) return
 
                     setShowSignOutConfirm(false)
                     await handleLogout()
                   }}
-                  className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition-all duration-200 hover:bg-red-500 hover:text-white active:scale-[0.98]"
+                  disabled={hasActiveRide}
+                  className={`flex-1 py-3 rounded-xl font-semibold transition-all duration-200 ${hasActiveRide
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-200 text-black hover:bg-red-500 hover:text-white active:scale-[0.98]"
+                    }`}
                 >
                   Log Out
                 </button>
@@ -666,7 +666,34 @@ export default function RiderHome() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showActiveRideWarning && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
+            >
+              <p className="text-black font-semibold text-[17px] mb-6">
+                You cannot switch roles during an active ride.
+              </p>
 
+              <button
+                onClick={() => setShowActiveRideWarning(false)}
+                className="w-32 py-3 rounded-xl bg-red-500 text-white font-semibold"
+              >
+                OK
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* ══════════════════ HOME TAB ══════════════════ */}
       {tab === "home" && (
         <div className="px-4 pt-4 space-y-4">
@@ -818,7 +845,8 @@ export default function RiderHome() {
                 <span className="text-gray-400">🕐</span>
                 <input type="time" value={departureTime} min={getMinTime()}
                   onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
-                  className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none"
+                  className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none accent-gray-500"
+                  style={{ colorScheme: "light" }}
                 />
               </div>
               {timeError && <p className="text-red-500 text-xs">⚠ Please select a valid future departure time.</p>}
@@ -866,7 +894,7 @@ export default function RiderHome() {
           {historyErr && <div className="text-center py-16 text-red-500 text-sm">{historyErr}</div>}
           {!historyLoad && !historyErr && history.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <span className="text-5xl mb-3">🚗</span>
+              <span className="text-5xl mb-3"></span>
               <p className="text-sm font-medium">No rides yet</p>
               <p className="text-xs mt-1">Your completed rides will appear here</p>
             </div>
@@ -980,32 +1008,32 @@ export default function RiderHome() {
               <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-300 relative space-y-4">
                 <div className="flex justify-between border-b border-gray-300 pb-3">
                   <span className="text-gray-500 font-medium text-sm">Name</span>
-                  <span className="text-gray-900 font-bold text-sm">{fullName || firstName}</span>
+                  <span className="text-gray-900 font-semibold text-sm">{fullName || firstName}</span>
                 </div>
                 <div className="flex justify-between border-b border-gray-300 pb-3">
                   <span className="text-gray-500 font-medium text-sm">University ID</span>
-                  <span className="text-gray-900 font-bold text-sm">{profile?.universityId || "—"}</span>
+                  <span className="text-gray-900 font-semibold text-sm">{profile?.universityId || "—"}</span>
                 </div>
 
 
                 <div className="flex justify-between border-b border-gray-300 pb-3">
                   <span className="text-gray-500 font-medium text-sm">Email</span>
-                  <span className="text-gray-900 font-bold text-sm truncate max-w-[200px]">{profile?.email || "—"}</span>
+                  <span className="text-gray-900 font-semibold text-sm truncate max-w-[200px]">{profile?.email || "—"}</span>
                 </div>
 
 
                 <div className="flex justify-between border-b border-gray-300 pb-3">
                   <span className="text-gray-500 font-medium text-sm">Phone</span>
-                  <span className="text-gray-900 font-bold text-sm">{profile?.phone || storedUser?.phone || "—"}</span>
+                  <span className="text-gray-900 font-semibold text-sm">{profile?.phone || storedUser?.phone || "—"}</span>
                 </div>
                 <div className="flex justify-between border-b border-gray-300 pb-3">
                   <span className="text-gray-500 font-medium text-sm">Gender</span>
-                  <span className="text-gray-900 font-bold text-sm">{profile?.gender || "—"}</span>
+                  <span className="text-gray-900 font-semibold text-sm">{profile?.gender || "—"}</span>
                 </div>
                 {profile?.vehicleNo && (
                   <div className="flex justify-between pb-1">
                     <span className="text-gray-500 font-medium text-sm">Vehicle No</span>
-                    <span className="text-gray-900 font-bold text-sm uppercase">{profile.vehicleNo}</span>
+                    <span className="text-gray-900 font-semibold text-sm uppercase">{profile.vehicleNo}</span>
                   </div>
                 )}
               </div>

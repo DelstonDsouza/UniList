@@ -9,6 +9,7 @@ const StudentSchema = new mongoose.Schema(
     firstName:    { type: String, required: true, trim: true },
     lastName:     { type: String, required: true, trim: true },
     gender:       { type: String, enum: ["Male", "Female", "Other"], required: true },
+    phone:        { type: String, required: true, trim: true },
     isRegistered: { type: Boolean, default: false }, // true once a user claims this ID
     registeredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },

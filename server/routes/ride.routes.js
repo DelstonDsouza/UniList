@@ -205,6 +205,13 @@ router.get("/my", auth, wrap(async (req, res) => {
   res.json({ success: true, data: { rides } })
 }))
 
+// ── GET SINGLE RIDE ───────────────────────────────────────────────────────────
+router.get("/:id", auth, wrap(async (req, res) => {
+  const ride = await Ride.findById(req.params.id).lean()
+  if (!ride) return res.status(404).json({ success: false, error: { code: "NOT_FOUND" } })
+  res.json({ success: true, data: { ride } })
+}))
+
 // ── CANCEL ────────────────────────────────────────────────────────────────────
 router.post("/:id/cancel", auth, wrap(async (req, res) => {
   const ride = await Ride.findOne({ _id: req.params.id, riderId: req.user._id })

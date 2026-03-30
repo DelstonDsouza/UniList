@@ -52,10 +52,10 @@ function App() {
         {/* ── Public ───────────────────────────────────────────────────── */}
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<RegisterDetails />} />
         <Route path="/login/rider" element={<RiderLogin />} />
 
         {/* ── Onboarding ───────────────────────────────────────────────── */}
+        <Route path="/register" element={<RegisterDetails />} />
         <Route path="/select-role" element={<AuthGate><SelectRole /></AuthGate>} />
 
         {/* ── Rider ────────────────────────────────────────────────────── */}
@@ -64,8 +64,8 @@ function App() {
 
         <Route path="/pick-location" element={<AuthGate><PickLocation /></AuthGate>} />
         <Route path="/rider-searching" element={<AuthGate><RiderSearching /></AuthGate>} />
-        <Route path="/ride-confirmed" element={<AuthGate><RideConfirmed /></AuthGate>} />
-        <Route path="/ride-pickup" element={<AuthGate><RidePickup /></AuthGate>} />
+        <Route path="/ride-confirmed/:id" element={<AuthGate><RideConfirmed /></AuthGate>} />
+        <Route path="/ride-pickup/:id" element={<AuthGate><RidePickup /></AuthGate>} />
         <Route path="/rider-otp-verify" element={<Navigate to="/ride-pickup" replace />} />
 
         <Route path="/giveride" element={<AuthGate><GiveRide /></AuthGate>} />

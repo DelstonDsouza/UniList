@@ -23,6 +23,15 @@ export async function apiFetch(path, options = {}) {
     data = text ? { detail: text } : null
   }
   if (!res.ok) {
+    if (res.status === 401) {
+      console.warn("🔐 Session expired or invalid — clearing token and redirecting to login")
+      clearToken()
+      // Only redirect if we're not already on the login or landing page
+      const currentPath = window.location.pathname
+      if (currentPath !== "/login" && currentPath !== "/") {
+        window.location.replace("/login")
+      }
+    }
     const msg = (data && data.detail) || res.statusText || "Request failed"
     throw new Error(msg)
   }
