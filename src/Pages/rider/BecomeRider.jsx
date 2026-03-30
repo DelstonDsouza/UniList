@@ -828,7 +828,7 @@ function BecomeRider() {
   useEffect(() => {
     const raw = localStorage.getItem("user")
     const u = raw ? JSON.parse(raw) : null
-    if (u && u.isRider) navigate("/giveride", { replace: true })
+    if (u && u.isRider) navigate("/rider-home", { replace: true })
   }, [navigate])
 
   const handleSuccess = () => {
@@ -837,7 +837,7 @@ function BecomeRider() {
   }
 
   const handleContinue = () => {
-    navigate("/giveride")
+    navigate("/rider-home")
   }
 
   return (

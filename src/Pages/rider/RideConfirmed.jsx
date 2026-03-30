@@ -204,7 +204,7 @@ export default function RideConfirmed() {
     setLoading(true)
     setError("")
     try {
-      await apiFetch(`/rides/${rideId}/pickup-start`, { method: "POST" })
+      // Removing the non-existent /pickup-start backend call
       navigate(`/ride-pickup/${rideId}`, {
         replace: true,
         state: {

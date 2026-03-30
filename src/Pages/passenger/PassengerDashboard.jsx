@@ -444,7 +444,10 @@ export default function PassengerDashboard() {
     setHistoryLoad(true)
     const userId = passengerProfile?._id || JSON.parse(localStorage.getItem("user") || "{}").uid || ""
     apiFetch(`/rides/history?passengerId=${userId}`)
-      .then(data => setHistory(Array.isArray(data.rides) ? data.rides : []))
+      .then(res => {
+        const arr = res?.data?.rides || res?.rides
+        setHistory(Array.isArray(arr) ? arr : [])
+      })
       .catch(() => { })
       .finally(() => setHistoryLoad(false))
   }, [navTab, passengerProfile])
@@ -811,7 +814,7 @@ export default function PassengerDashboard() {
                     <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                     <div>
                       <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Pickup</p>
-                      <p className="text-sm font-medium text-gray-800">{ride.pickupLocation || "—"}</p>
+                      <p className="text-sm font-medium text-gray-800">{ride.pickupAddress || ride.passenger?.pickupAddress || "Location Saved"}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
@@ -825,7 +828,7 @@ export default function PassengerDashboard() {
 
                 <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
                   <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Fare Paid</span>
-                  <span className="text-base font-bold text-teal-600">₹{ride.fare || 0}</span>
+                  <span className="text-base font-bold text-teal-600">₹{typeof ride.fare === 'object' ? (ride.fare?.amount || 0) : (ride.fare || 0)}</span>
                 </div>
               </div>
             ))}

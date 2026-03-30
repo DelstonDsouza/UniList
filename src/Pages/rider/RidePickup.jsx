@@ -445,7 +445,7 @@ export default function RidePickup() {
   const onArrivedClick = async () => {
     setArrived(true) // Instant UI feedback
     try {
-      await apiFetch(`/rider/${id}/arrive`, { method: "POST" })
+      await apiFetch(`/rides/${id}/arrive`, { method: "POST" })
     } catch (e) {
       console.error("Arrive update failed:", e)
     }

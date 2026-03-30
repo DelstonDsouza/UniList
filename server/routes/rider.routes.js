@@ -178,6 +178,29 @@ router.get("/my", auth, wrap(async (req, res) => {
 }))
 
 // ─────────────────────────────────────────────────────────────
+// HISTORY ROUTE
+// ─────────────────────────────────────────────────────────────
+router.get("/history", auth, wrap(async (req, res) => {
+  const { passengerId, riderId } = req.query
+
+  if (!passengerId && !riderId) {
+    return res.status(400).json({ 
+      success: false, 
+      error: { code: "MISSING_PARAMS", message: "passengerId or riderId required" } 
+    })
+  }
+
+  const query = passengerId ? { "passenger.userId": passengerId } : { riderId }
+  
+  const rides = await Ride.find(query)
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean()
+
+  res.json({ success: true, data: { rides } })
+}))
+
+// ─────────────────────────────────────────────────────────────
 // CANCEL — works for pending, locked, ongoing
 // ─────────────────────────────────────────────────────────────
 router.post("/:id/cancel", auth, wrap(async (req, res) => {

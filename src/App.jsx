@@ -16,7 +16,6 @@ import PickLocation from "./pages/rider/PickLocation"
 import RiderSearching from "./pages/rider/RiderSearching"
 import RideConfirmed from "./pages/rider/RideConfirmed"
 import RidePickup from "./pages/rider/RidePickup"
-import GiveRide from "./pages/rider/GiveRide"
 import RiderWait from "./pages/rider/RiderWait"
 import BecomeRider from "./pages/rider/BecomeRider"
 import RiderRegistration from "./pages/rider/RiderRegistration"
@@ -24,7 +23,8 @@ import PassengerHome from "./pages/passenger/PassengerHome"
 import PassengerDashboard from "./pages/passenger/PassengerDashboard"
 import PassengerPayment from "./pages/passenger/PassengerPayment"
 import RiderPayment from "./pages/rider/RiderPayment"
-import Admin from "./pages/admin/Admin"
+import AdminLogin from "./pages/admin/AdminLogin"
+import AdminDashboard from "./pages/admin/AdminDashboard"
 
 // ✅ Defined OUTSIDE App — never recreated on re-render
 const AuthGate = ({ children }) => {
@@ -68,7 +68,6 @@ function App() {
         <Route path="/ride-pickup/:id" element={<AuthGate><RidePickup /></AuthGate>} />
         <Route path="/rider-otp-verify" element={<Navigate to="/ride-pickup" replace />} />
 
-        <Route path="/giveride" element={<AuthGate><GiveRide /></AuthGate>} />
         <Route path="/rider-wait/:id" element={<AuthGate><RiderWait /></AuthGate>} />
         <Route path="/become-rider" element={<AuthGate><BecomeRider /></AuthGate>} />
         <Route path="/rider-registration" element={<AuthGate><RiderRegistration /></AuthGate>} />
@@ -82,7 +81,9 @@ function App() {
         <Route path="/rider-payment" element={<AuthGate><RiderPayment /></AuthGate>} />
 
         {/* ── Admin ────────────────────────────────────────────────────── */}
-        <Route path="/admin" element={<AuthGate><Admin /></AuthGate>} />
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="/admin/dashboard" element={<AdminDashboard />} />
 
         {/* ── Catch-all ────────────────────────────────────────────────── */}
         <Route path="*" element={<Navigate to="/" replace />} />

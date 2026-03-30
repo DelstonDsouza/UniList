@@ -12,6 +12,7 @@ import authRoutes from "./routes/auth.routes.js"
 import rideRoutes from "./routes/ride.routes.js"
 import riderRoutes from "./routes/rider.routes.js"
 import studentRoutes from "./routes/student.routes.js"
+import adminRoutes from "./routes/admin.routes.js"
 
 // ── App + HTTP server ────────────────────────────────────────────────────────
 const app    = express()
@@ -72,9 +73,12 @@ app.get("/health", (_req, res) => res.json({ ok: true }))
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/auth",authRoutes)
+app.use("/api/rides",riderRoutes)
 app.use("/api/rides",rideRoutes)
 app.use("/api/rider",riderRoutes)
 app.use("/api/students",studentRoutes)
+app.use("/api/admin", adminRoutes)
+app.use("/api/debug", adminRoutes)
 
 // ── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

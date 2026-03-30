@@ -230,7 +230,10 @@ export default function RiderHome() {
     setHistoryErr("")
     const userId = profile?._id || storedUser?.uid || ""
     apiFetch(`/rides/history?riderId=${userId}`)
-      .then(data => setHistory(Array.isArray(data.rides) ? data.rides : []))
+      .then(res => {
+        const arr = res?.data?.rides || res?.rides
+        setHistory(Array.isArray(arr) ? arr : [])
+      })
       .catch(() => setHistoryErr("Could not load ride history."))
       .finally(() => setHistoryLoad(false))
   }, [tab, profile])
@@ -900,7 +903,7 @@ export default function RiderHome() {
                     <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
                     <div>
                       <p className="text-[10px] text-gray-400 uppercase tracking-wide">Pickup</p>
-                      <p className="text-sm font-medium text-gray-800">{ride.pickupLocation || ride.userLocation || "—"}</p>
+                      <p className="text-sm font-medium text-gray-800">{ride.pickupAddress || ride.passenger?.pickupAddress || ride.locationName || "Location Saved"}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
@@ -914,7 +917,7 @@ export default function RiderHome() {
                 {ride.fare != null && (
                   <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
                     <span className="text-xs text-gray-500">Fare Earned</span>
-                    <span className="text-sm font-bold text-teal-600">₹{ride.fare}</span>
+                    <span className="text-sm font-bold text-teal-600">₹{typeof ride.fare === 'object' ? (ride.fare?.amount || 0) : (ride.fare || 0)}</span>
                   </div>
                 )}
               </div>
