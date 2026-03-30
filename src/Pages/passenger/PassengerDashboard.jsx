@@ -512,44 +512,6 @@ export default function PassengerDashboard() {
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-gray-50 relative text-gray-900 font-sans overflow-hidden">
 
-      {/* ────────────────── SWITCH CONFIRMATION POPUP ────────────────── */}
-      <AnimatePresence>
-        {showSwitchRiderConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
-              className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
-            >
-              <p className="text-black font-semibold text-[17px] tracking-tight mb-6 mt-2">Are you sure you want to switch to rider ?</p>
-              <div className="flex gap-4 justify-center">
-                <button onClick={() => setShowSwitchRiderConfirm(false)} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
-                  No
-                </button>
-                <button onClick={() => {
-                  if (hasActiveRide) {
-                    setShowSwitchRiderConfirm(false)
-                    toast.error("Complete your active ride before switching roles.")
-                    return
-                  }
-                  setShowSwitchRiderConfirm(false)
-                  navigate("/rider-home")
-                }} className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white">
-                  Yes
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
 
       {/* ── SIGN OUT CONFIRMATION POPUP ── */}
       <AnimatePresence>
@@ -625,6 +587,52 @@ export default function PassengerDashboard() {
               >
                 OK
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── SWITCH RIDER CONFIRMATION POPUP ── */}
+      <AnimatePresence>
+        {showSwitchRiderConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-white rounded-[20px] p-6 w-full max-w-[320px] shadow-xl text-center"
+            >
+              <p className="text-black font-semibold text-[17px] tracking-tight mb-6 mt-2">
+                Are you sure you want to switch to rider ?
+              </p>
+              <div className="flex gap-4 justify-center">
+                <button
+                  onClick={() => setShowSwitchRiderConfirm(false)}
+                  className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white"
+                >
+                  No
+                </button>
+                <button
+                  onClick={async () => {
+                    if (hasActiveRide) {
+                      setShowSwitchRiderConfirm(false)
+                      setShowRoleBlockedPopup(true)
+                      return
+                    }
+                    setShowSwitchRiderConfirm(false)
+                    navigate("/rider-home")
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-gray-200 text-black font-semibold transition hover:bg-black hover:text-white active:scale-[0.98]"
+                >
+                  Yes
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -777,9 +785,11 @@ export default function PassengerDashboard() {
             </div>
           )}
           {!historyLoad && history.length === 0 && (
-            <div className="flex flex-col items-center justify-center opacity-70 h-48 text-gray-400">
-              <Clock className="w-12 h-12 mb-3" />
-              <p className="font-medium text-[15px]">No completed rides yet.</p>
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 animate-fade-in">
+              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                <Clock className="w-10 h-10 text-gray-300" />
+              </div>
+              <p className="font-bold text-[15px] text-gray-400">No completed rides yet.</p>
             </div>
           )}
           <div className="space-y-4">
@@ -936,9 +946,19 @@ export default function PassengerDashboard() {
                 ))}
               </div>
 
-              <div className="bg-white border border-gray-300 rounded-[24px] p-6 shadow-sm flex flex-col items-center justify-center py-10">
-                <span className="text-gray-400 font-medium text-sm">Total Rides Taken</span>
-                <span className="text-gray-900 font-extrabold text-3xl mt-1">{passengerProfile?.totalRides ?? "0"}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white border border-gray-300 rounded-[20px] p-5 shadow-sm flex flex-col items-center justify-center py-6">
+                  <span className="text-gray-500 font-medium text-xs">Total Rides Taken</span>
+                  <span className="text-gray-900 font-extrabold text-2xl mt-1">{passengerProfile?.totalRides ?? "0"}</span>
+                </div>
+                <div className="bg-white border border-gray-300 rounded-[20px] p-5 shadow-sm flex flex-col items-center justify-center py-6">
+                  <span className="text-gray-500 font-medium text-xs">Total Spendings</span>
+                  <span className="text-gray-900 font-extrabold text-2xl mt-1">{passengerProfile?.totalSpent !== undefined ? `₹${passengerProfile.totalSpent}` : "0"}</span>
+                </div>
+                <div className="bg-white border border-gray-300 rounded-[20px] p-5 shadow-sm flex flex-col items-center justify-center py-6 col-span-2">
+                  <span className="text-gray-500 font-medium text-xs">Rating</span>
+                  <span className="text-gray-900 font-extrabold text-2xl mt-1">{passengerProfile?.rating ? `${passengerProfile.rating}` : "5.0"}</span>
+                </div>
               </div>
             </div>
           )}

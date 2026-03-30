@@ -359,25 +359,30 @@ export default function RiderWait() {
 function BottomNav() {
   const navigate = useNavigate();
   const tabs = [
-    { id: "home",    icon: Compass, label: "Explore" },
-    { id: "history", icon: Clock,   label: "History" },
-    { id: "account", icon: User,    label: "Profile" }
+    { id: "home", icon: Compass, label: "Explore" },
+    { id: "history", icon: Clock, label: "History" },
+    { id: "account", icon: User, label: "Profile" }
   ];
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-2 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
       {tabs.map((t) => {
         const Icon = t.icon;
+        const active = t.id === "home";
         return (
           <button
             key={t.id}
-            onClick={() => navigate("/rider-home", { state: { tab: t.id } })}
+            onClick={() => {
+              if (t.id === "home") return;
+              navigate("/rider-home", { state: { tab: t.id } });
+            }}
             className="flex flex-col items-center gap-1.5 flex-1 relative group"
           >
-            <Icon className="w-6 h-6 transition-colors duration-300 text-gray-400 group-hover:text-gray-600" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold transition-colors text-gray-400 group-hover:text-gray-600">{t.label}</span>
+            <Icon className={`w-6 h-6 transition-colors duration-300 ${active ? "text-teal-600" : "text-gray-400 group-hover:text-gray-600"}`} />
+            <span className={`text-[10px] uppercase tracking-wider font-semibold transition-colors ${active ? "text-teal-600" : "text-gray-400 group-hover:text-gray-600"}`}>{t.label}</span>
+            {active && <motion.div layoutId="nav-pill" className="absolute -bottom-2 w-1.5 h-1.5 bg-teal-500 rounded-full" />}
           </button>
         )
       })}
     </div>
-  )
+  );
 }

@@ -177,6 +177,15 @@ export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
 }
 
 // ── START RIDE ────────────────────────────────────────────────────────────────
+export async function arriveAtPickup(rideId, riderId) {
+  const ride = await Ride.findOne({ _id: rideId, riderId })
+  if (!ride) throw httpError("Ride not found.", 404)
+  if (ride.status !== "locked") return ride // Already arrived?
+  ride.status = "pickup_started"
+  await ride.save()
+  return ride
+}
+
 export async function startRide(rideId, riderId) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
   if (!ride) throw httpError("Ride not found.", 404)

@@ -8,7 +8,7 @@ import { apiFetch } from "../../services/api"
 import { socket, connectSocket } from "../../services/socket"
 import toast from "react-hot-toast"
 import SwipeButton from "../../components/ui/SwipeButton"
-import { motion, useMotionValue, useAnimation } from "framer-motion"
+import { motion, useMotionValue, useAnimation, AnimatePresence } from "framer-motion"
 import { Compass, Clock, User } from "lucide-react"
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -19,9 +19,7 @@ L.Icon.Default.mergeOptions({
 })
 
 const COLLEGE = [12.872109642876621, 74.84534749009204]
-const COLLEGE_LOC = { lat: 12.872109642876621, lng: 74.84534749009204 }
 const AVG_SPEED_KMH = 40
-const PEAK_MULTIPLIER = 1.5
 const PEAK_START = 8
 const PEAK_END = 9
 
@@ -41,7 +39,7 @@ const haversineM = ([lat1, lng1], [lat2, lng2]) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-// ─ Map components ─
+// \u2500 Map components \u2500
 function PinLayer({ position, color, emoji, label }) {
   const map = useMap()
   useEffect(() => {
@@ -110,7 +108,7 @@ const getOsrmRoute = async (from, to, signal) => {
   }
 }
 
-// ─ OTP input boxes ─
+// \u2500 OTP input boxes \u2500
 function OtpBoxes({ value, onChange, disabled }) {
   const refs = useRef([])
   const handleChange = (i, char) => {
@@ -140,11 +138,13 @@ function OtpBoxes({ value, onChange, disabled }) {
           onChange={e => handleChange(i, e.target.value)}
           onKeyDown={e => handleKeyDown(i, e)}
           style={{
-            width: 50, height: 60, fontSize: 24, fontWeight: 800, textAlign: "center",
-            borderRadius: 12,
-            border: disabled ? "1.5px solid #cbd5e1" : value[i] ? "2px solid #16a34a" : "1.5px solid #cbd5e1",
-            background: disabled ? "#ffffff" : value[i] ? "#f0fdf4" : "#ffffff",
-            color: disabled ? "#cbd5e1" : "#0f172a", outline: "none",
+            width: 50, height: 60, fontSize: 32, fontWeight: 900, textAlign: "center",
+            borderRadius: 16,
+            background: "white",
+            color: "#0f172a", outline: "none",
+            border: value[i] ? "2.5px solid #22c55e" : "2px solid #e2e8f0",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+            transition: "all 0.2s ease"
           }}
         />
       ))}
@@ -152,7 +152,7 @@ function OtpBoxes({ value, onChange, disabled }) {
   )
 }
 
-// ─ Modal shell ─
+// \u2500 Modal shell \u2500
 function Modal({ title, onClose, children }) {
   return (
     <div style={{
@@ -262,14 +262,13 @@ function HelpModal({ onClose }) {
   )
 }
 
-// ─ Main component ─
+// \u2500 Main component \u2500
 export default function RidePickup() {
   const { id } = useParams()
   const { state } = useLocation()
   const navigate = useNavigate()
 
   const [rideData, setRideData] = useState(state || null)
-  const [loading, setLoading] = useState(!rideData)
   const [bootstrapping, setBootstrapping] = useState(!rideData)
 
   const [riderPos, setRiderPos] = useState(state?.userLocation ?? null)
@@ -286,17 +285,47 @@ export default function RidePickup() {
   const [showHelp, setShowHelp] = useState(false)
   const [reachLoading, setReachLoading] = useState(false)
 
+  // ── Bottom Sheet Logic ──
+  const [dims, setDims] = useState({ vh: window.innerHeight })
+  useEffect(() => {
+    const fn = () => setDims({ vh: window.innerHeight })
+    window.addEventListener("resize", fn)
+    return () => window.removeEventListener("resize", fn)
+  }, [])
+
+  const BOTTOM_NAV = 70;
+  const SHEET_FULL = 140;
+  const SHEET_HALF = dims.vh * 0.45;
+  const SHEET_COLLAPSED = dims.vh - BOTTOM_NAV - 180;
+
+  const sheetY = useMotionValue(SHEET_HALF)
+  const sheetControls = useAnimation()
+
+  useEffect(() => { sheetControls.start({ y: SHEET_HALF }) }, [SHEET_HALF, sheetControls])
+
+  const handleDragEnd = (_, info) => {
+    const currY = sheetY.get()
+    const velocity = info.velocity.y
+    const points = [SHEET_FULL, SHEET_HALF, SHEET_COLLAPSED]
+    let closest = points[0]; let minDiff = Math.abs(currY - points[0])
+    points.forEach(p => { const d = Math.abs(currY - p); if (d < minDiff) { minDiff = d; closest = p } })
+
+    let target = closest;
+    if (velocity < -120) { if (currY > SHEET_HALF + 50) target = SHEET_HALF; else target = SHEET_FULL }
+    else if (velocity > 120) { if (currY < SHEET_HALF - 50) target = SHEET_HALF; else target = SHEET_COLLAPSED }
+
+    sheetControls.start({ y: target, transition: { type: "spring", bounce: 0, duration: 0.4 } })
+  }
+
   const watchRef = useRef(null)
   const abortRef = useRef(null)
-  const isPeak = isPeakHour()
 
-  // ─ Sync Ride on Mount ─
+  // \u2500 Sync Ride on Mount \u2500
   useEffect(() => {
     if (rideData && rideData.rideId === id) {
       setBootstrapping(false)
       return
     }
-    setLoading(true)
     apiFetch(`/rides/${id}`)
       .then(res => {
         const r = res.data.ride
@@ -316,8 +345,9 @@ export default function RidePickup() {
         if (r.status === "ongoing" || r.status === "reached_destination") {
           setPhase("toCollege")
           setArrived(true)
+        } else if (r.status === "pickup_started") {
+          setArrived(true)
         }
-        setLoading(false)
         setBootstrapping(false)
       })
       .catch(() => {
@@ -412,9 +442,17 @@ export default function RidePickup() {
     }
   }
 
+  const onArrivedClick = async () => {
+    setArrived(true) // Instant UI feedback
+    try {
+      await apiFetch(`/rider/${id}/arrive`, { method: "POST" })
+    } catch (e) {
+      console.error("Arrive update failed:", e)
+    }
+  }
+
   const mapCenter = riderPos ?? passengerPickup ?? COLLEGE
   const currentEta = phase === "toCollege" ? etaToCol : etaToPass
-  const etaLabel = phase === "toCollege" ? "Reaching college in" : "ETA to Passenger"
   const routeColor = phase === "toCollege" ? "#16a34a" : "#2563EB"
   const destPin = phase === "toCollege" ? COLLEGE : passengerPickup
 
@@ -437,8 +475,8 @@ export default function RidePickup() {
         <div className="absolute inset-0 z-0">
           <MapContainer center={mapCenter} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false}>
             <TileLayer
-              url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
-              attribution="&copy; OpenStreetMap contributors"
+              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+              attribution='&copy; CARTO'
               maxZoom={20}
             />
             {routeCoords.length > 1 && (
@@ -447,7 +485,7 @@ export default function RidePickup() {
             {routeCoords.length > 1 && <FitRoute coords={routeCoords} />}
             {riderPos && (
               <>
-                <PinLayer position={riderPos} color="#2563EB" emoji="🏍" label="You" />
+                <PinLayer position={riderPos} color="#2563EB" emoji="🏍️" label="You" />
                 <AccuracyRing position={riderPos} />
               </>
             )}
@@ -466,57 +504,121 @@ export default function RidePickup() {
               padding: "7px 12px", borderRadius: 20, border: "none",
               background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569",
               boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            }}>❓</button>
+            }} border="none">❓</button>
             <button onClick={() => setShowReport(true)} style={{
               padding: "7px 12px", borderRadius: 20, border: "none",
               background: "#fef2f2", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#dc2626",
               boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            }}>🚨</button>
+            }} border="none">🚨</button>
           </div>
         </div>
 
-        <div className="absolute bottom-24 left-0 right-0 z-20 px-4">
-          <div className="bg-white rounded-3xl p-5 shadow-2xl flex flex-col gap-4 border border-gray-100">
-            <div className="flex justify-between items-start">
+        {/* DRAGGABLE BOTTOM SHEET */}
+        <motion.div
+          drag="y"
+          dragConstraints={{ top: SHEET_FULL, bottom: SHEET_COLLAPSED }}
+          dragElastic={{ top: 0, bottom: 0.15 }}
+          dragMomentum={false}
+          onDragEnd={handleDragEnd}
+          animate={sheetControls}
+          style={{ y: sheetY, height: dims.vh - SHEET_FULL }}
+          className="absolute top-0 left-0 right-0 z-20 bg-white rounded-t-[32px] shadow-[0_-15px_40px_rgba(0,0,0,0.08)] flex flex-col pt-3"
+        >
+          {/* DRAG HANDLE */}
+          <div className="w-full pb-3 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing shrink-0" style={{ touchAction: 'none' }}>
+            <div style={{ width: 44, height: 5, background: "#cbd5e1", borderRadius: 99 }} />
+          </div>
+
+          <div style={{
+            flex: 1, background: "white", padding: "0 20px 90px",
+            display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
+            touchAction: "pan-y"
+          }} onPointerDown={e => e.stopPropagation()}>
+
+            <div>
+              <p style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", margin: "0 0 2px",
+                color: "#2563EB"
+              }}>
+                Pickup Passenger
+              </p>
+              <h2 style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", margin: 0 }}>
+                {phase === "toCollege" ? "Going to College" : "Enter Passenger OTP"}
+              </h2>
+            </div>
+
+            <div style={{
+              background: phase === "toCollege" ? "#0f172a" : "#2244bb",
+              borderRadius: 20, padding: "20px 22px",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              boxShadow: "0 8px 24px rgba(34,68,187,0.15)"
+            }}>
               <div>
-                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: routeColor, textTransform: "uppercase" }}>
-                  {phase === "toCollege" ? "Ride in Progress" : "Heading to Pickup"}
+                <p style={{
+                  fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 700,
+                  letterSpacing: "0.08em", margin: "0 0 4px"
+                }}>{phase === "toCollege" ? "ETA TO COLLEGE" : "ETA TO PASSENGER"}</p>
+                <p style={{ fontSize: 44, fontWeight: 900, color: "white", margin: 0, lineHeight: 1 }}>
+                  {currentEta ?? "--"}
+                  <span style={{ fontSize: 16, fontWeight: 600, marginLeft: 8, color: "rgba(255,255,255,0.6)" }}>
+                    {currentEta != null ? "min" : ""}
+                  </span>
                 </p>
-                <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                  {phase === "toCollege" ? "Going to College" : arrived ? "At Pickup Point" : "On the way"}
-                </h2>
               </div>
               <div style={{ textAlign: "right" }}>
-                <p style={{ fontSize: 24, fontWeight: 900, color: "#0f172a", margin: 0 }}>{currentEta ?? "--"}</p>
-                <p style={{ fontSize: 10, fontWeight: 700, color: "#64748b", margin: 0 }}>MIN ETA</p>
+                {phase === "toCollege" && distToCol != null && (
+                  <p style={{ fontSize: 24, fontWeight: 800, color: "white", margin: "0 0 4px" }}>
+                    {distToCol} km
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3 bg-blue-50/50 p-3 rounded-2xl border border-blue-100">
-               <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">{passengerName.charAt(0)}</div>
-               <div className="flex-1">
-                 <p className="text-sm font-bold text-gray-900">{passengerName}</p>
-                 <a href={`tel:${passengerPhone}`} className="text-xs text-blue-600 font-bold block">📞 {passengerPhone}</a>
-               </div>
-               <div className="text-right">
-                 <p className="text-sm font-black text-green-600">₹{fare}</p>
-                 <p className="text-[10px] text-gray-400 font-bold">CASH</p>
-               </div>
+            <div style={{
+              background: "white", border: "2px solid #e0f2fe", borderRadius: 20,
+              padding: "16px 18px", boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+              display: "flex", justifyContent: "space-between", alignItems: "center"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: 12,
+                   background: "#2563EB",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "white", fontSize: 20, fontWeight: 900,
+                }}>{(passengerName || "P")[0].toUpperCase()}</div>
+                <div>
+                  <p style={{ fontWeight: 800, fontSize: 16, color: "#0f172a", margin: "0 0 2px" }}>
+                    {passengerName}
+                  </p>
+                  <a href={`tel:${passengerPhone}`} className="text-sm text-blue-600 font-bold block flex items-center gap-1">
+                    📞 <span style={{ fontSize: 13 }}>{passengerPhone}</span>
+                  </a>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 18, fontWeight: 900, color: "#16a34a", margin: 0 }}>₹{fare}</p>
+                <p style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>cash</p>
+              </div>
             </div>
 
-            {phase === "toPassenger" && (
-              <div className="pt-2">
-                 {!arrived ? (
-                   <button onClick={() => setArrived(true)} className="w-full py-3.5 rounded-2xl bg-gray-900 text-white font-bold text-sm">
-                     I've Arrived at Pickup
-                   </button>
-                 ) : (
-                   <div className="space-y-4">
-                     <p className="text-center text-xs font-bold text-gray-500 uppercase tracking-widest">Enter Passenger OTP</p>
+             {phase === "toPassenger" && (
+               <div style={{
+                 background: "#f8fafc", border: "1.5px solid #e2e8f0",
+                 borderRadius: 20, padding: "20px 18px", marginTop: 4
+               }}>
+                  {!arrived ? (
+                    <button onClick={onArrivedClick} className="w-full py-4 rounded-2xl bg-gray-900 text-white font-black text-sm tracking-wide shadow-lg active:scale-[0.98] transition">
+                      I've Arrived at Pickup
+                    </button>
+                  ) : (
+                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                     <p style={{ textAlign: "center", fontSize: 13, fontWeight: 800, color: "#475569" }}>
+                       Enter passenger's OTP
+                     </p>
                      <OtpBoxes value={otp} onChange={setOtp} disabled={submitting} />
-                     {otpError && <p className="text-center text-red-500 text-xs font-bold">{otpError}</p>}
+                     {otpError && <p style={{ textAlign: "center", color: "#dc2626", fontSize: 12, fontWeight: 700 }}>{otpError}</p>}
                      {otp.length === 4 && (
-                       <SwipeButton label="Slide to Start Ride" color="#16a34a" onSwipeComplete={handleVerify} disabled={submitting} />
+                       <SwipeButton label="Slide to Verify OTP and Start Ride" color="#16a34a" onSwipeComplete={handleVerify} disabled={submitting} />
                      )}
                    </div>
                  )}
@@ -527,7 +629,7 @@ export default function RidePickup() {
               <SwipeButton label="Slide to Mark as Reached" color="#16a34a" onSwipeComplete={handleReached} disabled={reachLoading} />
             )}
           </div>
-        </div>
+        </motion.div>
         <BottomNav />
       </div>
     </>
@@ -545,13 +647,18 @@ function BottomNav() {
     <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-2 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
       {tabs.map((t) => {
         const Icon = t.icon;
+        const active = t.id === "home";
         return (
-          <button key={t.id} onClick={() => navigate("/rider-home", { state: { tab: t.id } })} className="flex flex-col items-center gap-1.5 flex-1 relative group">
-            <Icon className="w-6 h-6 transition-colors duration-300 text-gray-400 group-hover:text-gray-600" />
-            <span className={`text-[10px] uppercase tracking-wider font-semibold transition-colors text-gray-400 group-hover:text-gray-600`}>{t.label}</span>
+          <button key={t.id} onClick={() => {
+            if (t.id === "home") return;
+            navigate("/rider-home", { state: { tab: t.id } });
+          }} className="flex flex-col items-center gap-1.5 flex-1 relative group">
+            <Icon className={`w-6 h-6 transition-colors duration-300 ${active ? "text-teal-600" : "text-gray-400 group-hover:text-gray-600"}`} />
+            <span className={`text-[10px] uppercase tracking-wider font-semibold transition-colors ${active ? "text-teal-600" : "text-gray-400 group-hover:text-gray-600"}`}>{t.label}</span>
+            {active && <motion.div layoutId="nav-pill" className="absolute -bottom-2 w-1.5 h-1.5 bg-teal-500 rounded-full" />}
           </button>
         )
       })}
     </div>
-  )
+  );
 }

@@ -1,6 +1,6 @@
 // src/pages/auth/Login.jsx
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { auth } from "../../config/firebase"
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth"
@@ -110,6 +110,32 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [showTerms, setShowTerms] = useState(false)
+
+  useEffect(() => {
+    // Check if we already have a valid session
+    const token = localStorage.getItem("token")
+    if (token) {
+      console.log("⚡ Found existing session, redirecting based on role...")
+      try {
+        const userData = JSON.parse(localStorage.getItem("user") || "{}")
+        // If we don't have role in localStorage, it will be fetched in AuthGate anyway
+        // or we can just send to dashboard as a safe default.
+        if (userData.isRider) {
+          navigate("/rider-home", { replace: true })
+        } else {
+          navigate("/dashboard", { replace: true })
+        }
+      } catch (e) {
+        navigate("/dashboard", { replace: true })
+      }
+    }
+
+    // Ensure a fresh recaptcha verifier on every mount
+    if (window.recaptchaVerifier) {
+      try { window.recaptchaVerifier.clear() } catch (e) { }
+      window.recaptchaVerifier = null
+    }
+  }, [navigate])
 
   const setupRecaptcha = () => {
     if (!window.recaptchaVerifier) {

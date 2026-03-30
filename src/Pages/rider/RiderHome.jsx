@@ -1,7 +1,7 @@
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import { useEffect, useRef, useState, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { signOut } from "firebase/auth"
 import { auth } from "../../config/firebase"
 import { apiFetch } from "../../services/api"
@@ -137,8 +137,9 @@ function Avatar({ name, size = "md", src }) {
 // ────────────────────────────────────────────────────────────────────────────
 export default function RiderHome() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { riderActiveRide, setRiderRideActive, hasActiveRide } = useRide()
-  const [tab, setTab] = useState("home")
+  const [tab, setTab] = useState(location.state?.tab || "home")
   const [accountView, setAccountView] = useState("menu")
   const [statFilter, setStatFilter] = useState("7 Days")
   const [uploadingPic, setUploadingPic] = useState(false)
@@ -149,6 +150,30 @@ export default function RiderHome() {
   const [profileLoad, setProfileLoad] = useState(true)
   const [showSwitchPassengerConfirm, setShowSwitchPassengerConfirm] = useState(false)
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
+
+  // \u2500\u2500 REDIRECT IF RIDE IS ACTIVE \u2500\u2500
+  useEffect(() => {
+    if (tab === "home" && riderActiveRide) {
+      console.log("🚀 Ride active, redirecting to ride page...")
+      const navState = {
+        rideId: riderActiveRide._id,
+        passengerName: riderActiveRide.passenger?.name || "Passenger",
+        passengerPhone: riderActiveRide.passenger?.phone || "",
+        passengerPickup: riderActiveRide.passenger?.location?.coordinates
+          ? [riderActiveRide.passenger.location.coordinates[1], riderActiveRide.passenger.location.coordinates[0]]
+          : null,
+        fare: riderActiveRide.fare?.amount,
+        distanceKm: riderActiveRide.fare?.distanceKm,
+      }
+      if (riderActiveRide.status === "pending" || riderActiveRide.status === "waiting") {
+        navigate(`/rider-wait/${riderActiveRide._id}`, { state: navState, replace: true })
+      } else if (riderActiveRide.status === "locked" || riderActiveRide.status === "confirmed") {
+        navigate(`/ride-confirmed/${riderActiveRide._id}`, { state: navState, replace: true })
+      } else if (["ongoing", "pickup_started", "arrived"].includes(riderActiveRide.status)) {
+        navigate(`/ride-pickup/${riderActiveRide._id}`, { state: navState, replace: true })
+      }
+    }
+  }, [tab, riderActiveRide, navigate])
 
   useEffect(() => {
     apiFetch("/auth/me")
@@ -707,8 +732,8 @@ export default function RiderHome() {
               <MapContainer center={mapCenter} zoom={15} style={{ height: "100%", width: "100%" }}
                 dragging zoomControl={false} scrollWheelZoom doubleClickZoom>
                 <TileLayer
-                  url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
-                  attribution="&copy; OpenStreetMap contributors"
+                  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                  attribution='&copy; CARTO'
                   maxZoom={20}
                 />
                 {pinCoords && (
@@ -734,149 +759,108 @@ export default function RiderHome() {
               </div>
             )}
           </div>
-          {/* ACTIVE RIDE CARD or POST RIDE CARD */}
-          {riderActiveRide ? (
-            <div
-              onClick={() => {
-                const navState = {
-                  rideId: riderActiveRide._id,
-                  passengerName: riderActiveRide.passenger?.name || "Passenger",
-                  passengerPhone: riderActiveRide.passenger?.phone || "",
-                  passengerPickup: riderActiveRide.passenger?.location?.coordinates
-                    ? [riderActiveRide.passenger.location.coordinates[1], riderActiveRide.passenger.location.coordinates[0]]
-                    : null,
-                  fare: riderActiveRide.fare?.amount,
-                  distanceKm: riderActiveRide.fare?.distanceKm,
-                }
-                if (riderActiveRide.status === "pending") navigate(`/rider-wait/${riderActiveRide._id}`, { state: navState, replace: true })
-                else if (riderActiveRide.status === "locked") navigate("/ride-confirmed", { state: navState, replace: true })
-                else navigate("/ride-pickup", { state: navState, replace: true })
-              }}
-              className="bg-teal-600 text-white rounded-3xl p-5 shadow-lg border border-teal-500 cursor-pointer hover:bg-teal-700 active:scale-[0.98] transition flex flex-col gap-3 relative overflow-hidden"
-            >
-              <div className="absolute -right-4 -top-4 text-7xl opacity-10">🚗</div>
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-teal-200 mb-0.5">Active Ride</p>
-                  <h2 className="text-xl font-extrabold">
-                    {riderActiveRide.status === "pending" ? "Searching for Passenger…" :
-                      riderActiveRide.status === "locked" ? "Passenger Found!" :
-                        riderActiveRide.status === "pickup_started" ? "En Route to Passenger" :
-                          "Ride in Progress"}
-                  </h2>
-                  <p className="text-teal-100 text-sm font-medium mt-0.5">Tap to return to your ride</p>
+          {/* POST RIDE CARD */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 px-5 py-5 space-y-3">
+
+            <h2 className="text-base font-bold text-gray-900">Post a Ride</h2>
+
+            {/* Route block — From / To stacked */}
+            <div className="relative bg-gray-50 rounded-2xl border border-gray-100">
+
+              {/* FROM */}
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="w-3 h-3 rounded-full border-2 border-teal-500 bg-white flex-shrink-0" />
+                <div className="flex-1 relative" ref={dropRef}>
+                  <input type="text" value={locationName}
+                    onChange={(e) => { isUserTyping.current = true; setLocationName(e.target.value); setLocError(false) }}
+                    onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
+                    placeholder="Your pickup location…"
+                    className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
+                  />
+                  {loadingSugg && <span className="absolute right-0 top-0 text-gray-400 animate-spin">⟳</span>}
+                  {showDrop && suggestions.length > 0 && (
+                    <ul className="absolute z-50 left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+                      {suggestions.map((s, i) => (
+                        <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
+                          <button type="button" onMouseDown={() => selectSuggestion(s)}
+                            className="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
+                            <span className="block font-medium text-sm text-gray-800">{s.short}</span>
+                            <span className="block text-xs text-gray-400 truncate">{s.label}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                <div className="bg-white text-teal-600 rounded-full w-10 h-10 flex items-center justify-center font-bold text-lg shadow-sm flex-shrink-0">➔</div>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={saveCurrentRide} title={isCurrentRideSaved() ? "Ride saved" : "Save this ride"}
+                    className={`flex-shrink-0 transition ${isCurrentRideSaved() ? 'text-teal-600' : 'text-gray-400 hover:text-teal-600'}`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill={isCurrentRideSaved() ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                  </button>
+                  <button type="button" onClick={useCurrentLocation} title="Use current location"
+                    className="text-teal-500 hover:text-teal-700 flex-shrink-0 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <circle cx="12" cy="12" r="3" /><path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              {riderActiveRide.passenger?.name && (
-                <div className="bg-teal-700/50 rounded-xl px-3 py-2 text-sm text-teal-100">
-                  Passenger: <span className="font-semibold text-white">{riderActiveRide.passenger.name}</span>
+
+              {/* Divider with dashed line */}
+              <div className="flex items-center gap-3 px-4">
+                <div className="w-3 flex justify-center">
+                  <div className="w-px h-4 border-l-2 border-dashed border-gray-100" />
                 </div>
-              )}
+                <div className="flex-1 border-t border-dashed border-gray-100" />
+              </div>
+
+              {/* TO */}
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="w-3 h-3 rounded-sm bg-red-400 flex-shrink-0" />
+                <p className="text-sm text-gray-500 font-medium flex-1">{collegeName}</p>
+              </div>
             </div>
-          ) : (
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 px-5 py-5 space-y-3">
 
-              <h2 className="text-base font-bold text-gray-900">Post a Ride</h2>
+            {locError && <p className="text-red-500 text-xs">⚠ Could not determine your location.</p>}
 
-              {/* Route block — From / To stacked */}
-              <div className="relative bg-gray-50 rounded-2xl border border-gray-100">
-
-                {/* FROM */}
-                <div className="flex items-center gap-3 px-4 py-3.5">
-                  <div className="w-3 h-3 rounded-full border-2 border-teal-500 bg-white flex-shrink-0" />
-                  <div className="flex-1 relative" ref={dropRef}>
-                    <input type="text" value={locationName}
-                      onChange={(e) => { isUserTyping.current = true; setLocationName(e.target.value); setLocError(false) }}
-                      onFocus={() => { if (suggestions.length > 0) setShowDrop(true) }}
-                      placeholder="Your pickup location…"
-                      className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
-                    />
-                    {loadingSugg && <span className="absolute right-0 top-0 text-gray-400 animate-spin">⟳</span>}
-                    {showDrop && suggestions.length > 0 && (
-                      <ul className="absolute z-50 left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl max-h-52 overflow-y-auto">
-                        {suggestions.map((s, i) => (
-                          <li key={`${s.lat}-${s.lng}-${i}`} className="border-b border-gray-100 last:border-0">
-                            <button type="button" onMouseDown={() => selectSuggestion(s)}
-                              className="w-full text-left px-4 py-2.5 hover:bg-teal-50 transition">
-                              <span className="block font-medium text-sm text-gray-800">{s.short}</span>
-                              <span className="block text-xs text-gray-400 truncate">{s.label}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={saveCurrentRide} title={isCurrentRideSaved() ? "Ride saved" : "Save this ride"}
-                      className={`flex-shrink-0 transition ${isCurrentRideSaved() ? 'text-teal-600' : 'text-gray-400 hover:text-teal-600'}`}>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill={isCurrentRideSaved() ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    </button>
-                    <button type="button" onClick={useCurrentLocation} title="Use current location"
-                      className="text-teal-500 hover:text-teal-700 flex-shrink-0 transition">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <circle cx="12" cy="12" r="3" /><path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Divider with dashed line */}
-                <div className="flex items-center gap-3 px-4">
-                  <div className="w-3 flex justify-center">
-                    <div className="w-px h-4 border-l-2 border-dashed border-gray-100" />
-                  </div>
-                  <div className="flex-1 border-t border-dashed border-gray-100" />
-                </div>
-
-                {/* TO */}
-                <div className="flex items-center gap-3 px-4 py-3.5">
-                  <div className="w-3 h-3 rounded-sm bg-red-400 flex-shrink-0" />
-                  <p className="text-sm text-gray-500 font-medium flex-1">{collegeName}</p>
-                </div>
-              </div>
-
-              {locError && <p className="text-red-500 text-xs">⚠ Could not determine your location.</p>}
-
-              {/* Departure time */}
-              <div className="flex items-center gap-3 bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3.5">
-                <span className="text-gray-400">🕐</span>
-                <input type="time" value={departureTime} min={getMinTime()}
-                  onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
-                  className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none accent-gray-500"
-                  style={{ colorScheme: "light" }}
-                />
-              </div>
-              {timeError && <p className="text-red-500 text-xs">⚠ Please select a valid future departure time.</p>}
-
-              {/* Actions */}
-              <div className="flex gap-3 pt-1">
-                <button
-                  onClick={hasActiveRide ? () => toast.error("Complete your active ride first.") : handleSearch}
-                  disabled={hasActiveRide}
-                  className={`flex-1 py-3 rounded-xl text-sm font-semibold transition active:scale-95 ${hasActiveRide
-                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    : "bg-gray-900 hover:bg-gray-700 text-white"
-                    }`}>
-                  {hasActiveRide ? "Ride in Progress" : "Search for Passenger"}
-                </button>
-                <button
-                  onClick={() => {
-                    const saved = JSON.parse(localStorage.getItem("savedRides") || "[]")
-                    setSavedRides(Array.isArray(saved) ? saved : [])
-                    setTab("saved")
-                  }}
-                  className="px-4 py-3 rounded-xl border border-teal-200 bg-teal-50 text-teal-700 text-sm font-semibold hover:bg-teal-100 transition whitespace-nowrap"
-                  title="View saved rides"
-                >
-                  Saved
-                </button>
-              </div>
-
+            {/* Departure time */}
+            <div className="flex items-center gap-3 bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3.5">
+              <span className="text-gray-400">🕐</span>
+              <input type="time" value={departureTime} min={getMinTime()}
+                onChange={(e) => { setDepartureTime(e.target.value); setTimeError(false) }}
+                className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none accent-gray-500"
+                style={{ colorScheme: "light" }}
+              />
             </div>
-          )}
+            {timeError && <p className="text-red-500 text-xs">⚠ Please select a valid future departure time.</p>}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={hasActiveRide ? () => toast.error("Complete your active ride first.") : handleSearch}
+                disabled={hasActiveRide}
+                className={`flex-1 py-3 rounded-xl text-sm font-semibold transition active:scale-95 ${hasActiveRide
+                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-gray-900 hover:bg-gray-700 text-white"
+                  }`}>
+                {hasActiveRide ? "Ride in Progress" : "Search for Passenger"}
+              </button>
+              <button
+                onClick={() => {
+                  const saved = JSON.parse(localStorage.getItem("savedRides") || "[]")
+                  setSavedRides(Array.isArray(saved) ? saved : [])
+                  setTab("saved")
+                }}
+                className="px-4 py-3 rounded-xl border border-teal-200 bg-teal-50 text-teal-700 text-sm font-semibold hover:bg-teal-100 transition whitespace-nowrap"
+                title="View saved rides"
+              >
+                Saved
+              </button>
+            </div>
+
+          </div>
 
 
         </div>
@@ -892,11 +876,13 @@ export default function RiderHome() {
             </div>
           )}
           {historyErr && <div className="text-center py-16 text-red-500 text-sm">{historyErr}</div>}
-          {!historyLoad && !historyErr && history.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <span className="text-5xl mb-3"></span>
-              <p className="text-sm font-medium">No rides yet</p>
-              <p className="text-xs mt-1">Your completed rides will appear here</p>
+
+          {!historyLoad && history.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 animate-fade-in">
+              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                <Clock className="w-10 h-10 text-gray-300" />
+              </div>
+              <p className="font-bold text-[15px] text-gray-400">No completed rides yet.</p>
             </div>
           )}
           <div className="space-y-3">

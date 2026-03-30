@@ -37,10 +37,15 @@ router.post("/firebase", async (req, res) => {
         mem.users.set(String(user._id), user)
       }
     } else {
-      // Check if this phone exists in our Student database to auto-fill more details
+      console.log(`🔑 Firebase Auth success for [${decoded.phone_number}] (UID: ${decoded.uid})`)
+      
       const student = await Student.findOne({ 
         phone: decoded.phone_number?.replace(/\D/g, "").slice(-10) || "" 
       })
+
+      if (student) {
+        console.log(`🎓 Matched student [${student.universityId}] for ${decoded.phone_number}`)
+      }
 
       user = await User.findOneAndUpdate(
         { firebaseUid: decoded.uid },
@@ -59,8 +64,8 @@ router.post("/firebase", async (req, res) => {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       )
       
-      // If we found a student and it's not registered yet, links it
       if (student && !student.isRegistered) {
+        console.log(`🔗 Linking student [${student.universityId}] to User [${user._id}]`)
         await Student.findByIdAndUpdate(student._id, {
           $set: { isRegistered: true, registeredBy: user._id }
         })
