@@ -46,7 +46,7 @@ export default function AdminLogin() {
             <input
               type="email"
               required
-              placeholder="admin@college.com"
+              placeholder="admin"
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-red-600/20 focus:border-red-600 transition text-gray-900 placeholder-gray-400 font-medium"
               value={email}
               onChange={e => setEmail(e.target.value)}

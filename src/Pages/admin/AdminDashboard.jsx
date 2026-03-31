@@ -11,6 +11,7 @@ export default function AdminDashboard() {
   // States
   const [users, setUsers] = useState([])
   const [rides, setRides] = useState([])
+  const [complaints, setComplaints] = useState([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -20,14 +21,21 @@ export default function AdminDashboard() {
     }
   }, [navigate])
 
+  const handleLogout = () => {
+    localStorage.removeItem("isAdmin")
+    localStorage.removeItem("token")
+    navigate("/admin/login")
+  }
+
   const loadData = async () => {
     setLoading(true)
     try {
       const token = getToken()
       
-      const [resUsers, resRides] = await Promise.all([
+      const [resUsers, resRides, resComplaints] = await Promise.all([
         fetch(`${API_BASE}/admin/users`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }),
-        fetch(`${API_BASE}/admin/rides`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        fetch(`${API_BASE}/admin/rides`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }),
+        fetch(`${API_BASE}/admin/complaints`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       ]);
 
       if (resUsers.ok) {
@@ -41,6 +49,11 @@ export default function AdminDashboard() {
       if (resRides.ok) {
         const dataRide = await resRides.json();
         setRides(dataRide?.rides || []);
+      }
+
+      if (resComplaints.ok) {
+        const dataComp = await resComplaints.json();
+        setComplaints(dataComp?.complaints || []);
       }
     } catch {
       toast.error("Failed to load dashboard data")
@@ -74,9 +87,17 @@ export default function AdminDashboard() {
       {/* ── HEADER & TABS ── */}
       <div className="bg-[#fdfafb] sticky top-0 z-50 pt-5 px-6 pb-2">
         <div className="max-w-[1400px] mx-auto bg-white rounded-[24px] p-4 lg:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div className="shrink-0">
-            <h1 className="text-xl font-bold tracking-tight text-gray-900 leading-tight">RideMate</h1>
-            <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-[#a10d18] mt-1">Admin Console</p>
+          <div className="shrink-0 flex items-center justify-between xl:justify-start gap-6 w-full xl:w-auto">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-gray-900 leading-tight">RideMate</h1>
+              <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-[#a10d18] mt-1">Admin Console</p>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="xl:hidden px-4 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-500 hover:bg-gray-50 transition"
+            >
+              Logout
+            </button>
           </div>
 
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar scroll-smooth w-full xl:w-auto">
@@ -93,28 +114,17 @@ export default function AdminDashboard() {
                 </button>
               )
             })}
+            <button 
+              onClick={handleLogout}
+              className="hidden xl:block ml-4 px-5 py-[11px] rounded-[14px] border border-gray-200 text-sm font-bold text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </div>
 
       <div className="max-w-[1400px] mx-auto px-6 pt-6 space-y-4">
-
-        {/* HERO TITLE */}
-        <div className="bg-white rounded-[24px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-[#a10d18]"></div>
-          <p className="text-[10px] uppercase tracking-[0.15em] font-extrabold text-[#a10d18]/50 mb-3">Workspace</p>
-          <h2 className="text-[32px] md:text-[40px] font-medium text-gray-900 tracking-tight leading-none mb-4">
-            RideMate <span className="text-[#a10d18]">Admin Dashboard</span>
-          </h2>
-          <p className="text-gray-500 font-medium text-[15px] lg:text-[17px]">Monitor riders, passengers, ride activity, reports, moderation, and pricing in one place.</p>
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="mt-8 bg-[#a10d18] text-white px-7 py-3.5 rounded-[14px] text-[15px] font-bold hover:bg-black transition-all shadow-lg active:scale-95 flex items-center gap-2"
-          >
-            {loading ? "Refreshing..." : "Refresh Data"}
-          </button>
-        </div>
 
         {/* TAB CONTENTS */}
         <AnimatePresence mode="popLayout">
@@ -129,15 +139,34 @@ export default function AdminDashboard() {
 
             {activeTab === "Overview" && (
               <>
-                <MetricCard title="Total Users" value={users.length || "0"} />
-                <MetricCard title="Active Rides" value={rides.filter(r => ["pending", "locked", "pickup_started", "ongoing"].includes(r.status)).length.toString()} />
-                <MetricCard title="Open Reports" value={"0"} />
-                <MetricCard title="Disabled Users" value={"0"} />
+                {/* HERO TITLE */}
+                <div className="bg-white rounded-[24px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-[#a10d18]"></div>
+                  <p className="text-[10px] uppercase tracking-[0.15em] font-extrabold text-[#a10d18]/50 mb-3">Workspace</p>
+                  <h2 className="text-[32px] md:text-[40px] font-bold text-gray-900 tracking-tight leading-none mb-4 uppercase">
+                    RideMate <span className="text-[#a10d18] font-black">Admin Dashboard</span>
+                  </h2>
+                  <p className="text-gray-500 font-medium text-[15px] lg:text-[17px]">Monitor riders, passengers, ride activity, reports, moderation, and pricing in one place.</p>
+                  <button
+                    onClick={loadData}
+                    disabled={loading}
+                    className="mt-8 bg-[#a10d18] text-white px-7 py-3.5 rounded-[14px] text-[15px] font-bold hover:bg-black transition-all shadow-lg active:scale-95 flex items-center gap-2"
+                  >
+                    {loading ? "Refreshing..." : "Refresh Data"}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+                  <MetricCard title="Total Users" value={users.length || "0"} />
+                  <MetricCard title="Active Rides" value={rides.filter(r => ["pending", "locked", "pickup_started", "ongoing"].includes(r.status)).length.toString()} />
+                  <MetricCard title="Open Reports" value={complaints.filter(c => c.status !== 'resolved').length.toString()} />
+                  <MetricCard title="Disabled Users" value={"0"} />
+                </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 flex flex-wrap justify-between items-center gap-4 mt-2">
                   <div>
                     <h3 className="text-lg font-bold text-gray-900">Latest Complaints</h3>
-                    <p className="text-[15px] text-gray-500 mt-1 font-medium">No complaints filed yet.</p>
+                    <p className="text-[15px] text-gray-500 mt-1 font-medium">{complaints.length > 0 ? `${complaints.length} complaints filed.` : "No complaints filed yet."}</p>
                   </div>
                   <button onClick={() => setActiveTab("Reports")} className="text-sm font-bold text-[#a10d18] hover:underline">Open Reports</button>
                 </div>
@@ -205,7 +234,7 @@ export default function AdminDashboard() {
             )}
 
             {activeTab === "Reports" && (
-              <FilterableList title="User Complaints & Reports" filters={["All", "Open", "In Review", "Resolved"]} emptyMsg="No complaints found for this filter." items={[]} type="reports" />
+              <FilterableList title="User Complaints & Reports" filters={["All", "Pending", "Resolved"]} emptyMsg="No complaints found for this filter." items={complaints} type="reports" onRefresh={loadData} />
             )}
 
             {activeTab === "Ride Activity" && (
@@ -241,8 +270,33 @@ function MetricCard({ title, value }) {
   )
 }
 
-function FilterableList({ title, filters, emptyMsg, items = [], type = "" }) {
+function FilterableList({ title, filters, emptyMsg, items = [], type = "", onRefresh }) {
   const [active, setActive] = useState(filters[0])
+  const [responseTexts, setResponseTexts] = useState({})
+
+  const submitResponse = async (id, status) => {
+    try {
+      const text = responseTexts[id]
+      if (!text) return toast.error("Response text is required")
+      const token = getToken()
+
+      const res = await fetch(`${API_BASE}/admin/complaints/${id}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json", 
+          ...(token ? { Authorization: `Bearer ${token}` } : {}) 
+        },
+        body: JSON.stringify({ adminResponse: text, status })
+      })
+      if (!res.ok) throw new Error("Update failed")
+      
+      toast.success("Complaint updated")
+      setResponseTexts(prev => ({...prev, [id]: ""}))
+      if (onRefresh) onRefresh()
+    } catch {
+      toast.error("Failed to update complaint")
+    }
+  }
   
   const filtered = items.filter(item => {
     if (active === "All") return true;
@@ -251,6 +305,10 @@ function FilterableList({ title, filters, emptyMsg, items = [], type = "" }) {
       if (active === "Accepted") return ["locked", "pickup_started"].includes(item.status)
       if (active === "Ongoing") return item.status === "ongoing"
       if (active === "Completed") return item.status === "completed"
+    }
+    if (type === "reports") {
+      if (active === "Pending") return item.status === "pending" || item.status === "in_review"
+      if (active === "Resolved") return item.status === "resolved"
     }
     return true
   })
@@ -281,6 +339,72 @@ function FilterableList({ title, filters, emptyMsg, items = [], type = "" }) {
     </div>
   )
 
+  const renderComplaint = (comp) => (
+    <div key={comp._id || Math.random()} className="flex flex-col border border-gray-100 bg-gray-50/50 rounded-2xl p-5 hover:border-red-200 hover:bg-white hover:shadow-md transition-all gap-3">
+      <div className="flex justify-between items-start">
+        <div>
+           <p className="font-extrabold text-gray-900 text-[17px]">
+             {comp.userId?.firstName} {comp.userId?.lastName} <span className="text-gray-400 font-medium px-1">reported</span> {comp.against || "an issue"}
+           </p>
+           <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-[13px] text-gray-500 font-medium mt-1">
+             <span className="font-semibold text-[#a10d18] tracking-wide">{comp.complaintType}</span>
+             <span className="hidden sm:inline text-gray-300">•</span>
+             <span className="text-xs uppercase tracking-wider">{new Date(comp.createdAt).toLocaleString()}</span>
+           </div>
+        </div>
+        <div className="flex gap-2">
+           <span className={`text-[11px] px-3 py-1.5 rounded-xl uppercase tracking-wider font-bold shadow-sm ${
+             comp.status === 'resolved' ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : 
+             "bg-orange-50 text-orange-700 border border-orange-200"
+           }`}>
+            {comp.status?.replace("_", " ")}
+           </span>
+        </div>
+      </div>
+      <p className="text-sm text-gray-800 bg-white p-3 rounded-xl border border-gray-100">
+        {comp.complaint}
+      </p>
+      {comp.attachment && (
+        <div className="mt-1">
+          <p className="text-xs text-gray-500 mb-1">Attachment:</p>
+          <img src={comp.attachment} alt="Attachment" className="max-h-40 rounded-xl border border-gray-200 object-contain" />
+        </div>
+      )}
+
+      {/* Admin response block */}
+      {comp.adminResponse ? (
+        <div className="bg-gray-100 rounded-xl p-3 border border-gray-200 mt-2">
+           <p className="text-[11px] uppercase tracking-widest font-bold text-gray-500 mb-1">Support Response</p>
+           <p className="text-sm font-medium text-gray-800">{comp.adminResponse}</p>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-2">
+           <textarea 
+             placeholder="Type response for the user..."
+             value={responseTexts[comp._id] || ""}
+             onChange={e => setResponseTexts(prev => ({...prev, [comp._id]: e.target.value}))}
+             className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#a10d18]/20 focus:border-[#a10d18] transition resize-none"
+             rows={2}
+           />
+           <div className="flex gap-2 justify-end">
+              <button 
+                onClick={() => submitResponse(comp._id, "in_review")}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition"
+              >
+                Respond (Keep Open)
+              </button>
+              <button 
+                onClick={() => submitResponse(comp._id, "resolved")}
+                className="px-4 py-2 bg-[#a10d18] text-white text-xs font-bold rounded-lg hover:bg-red-800 transition"
+              >
+                Respond & Close Ticket
+              </button>
+           </div>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div className="bg-white rounded-[24px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-8">
@@ -304,7 +428,8 @@ function FilterableList({ title, filters, emptyMsg, items = [], type = "" }) {
       ) : (
         <div className="mt-8 space-y-3">
           {type === "rides" && filtered.map(renderRide)}
-          {type !== "rides" && <p className="text-[15px] text-gray-500 font-medium pt-2 pb-6 pl-2">Display coming soon.</p>}
+          {type === "reports" && filtered.map(renderComplaint)}
+          {type !== "rides" && type !== "reports" && <p className="text-[15px] text-gray-500 font-medium pt-2 pb-6 pl-2">Display coming soon.</p>}
         </div>
       )}
     </div>

@@ -134,13 +134,18 @@ function Avatar({ name, size = "md", src }) {
   )
 }
 
-// ────────────────────────────────────────────────────────────────────────────
 export default function RiderHome() {
   const navigate = useNavigate()
   const location = useLocation()
   const { riderActiveRide, setRiderRideActive, hasActiveRide } = useRide()
   const [tab, setTab] = useState(location.state?.tab || "home")
-  const [accountView, setAccountView] = useState("menu")
+  const [accountView, setAccountView] = useState(location.state?.accountView || "menu")
+  
+  // Keep history state in sync so refreshes maintain the current tab
+  useEffect(() => {
+    navigate(".", { replace: true, state: { from: location.state?.from, tab, accountView } })
+  }, [tab, accountView, navigate, location.state?.from])
+
   const [statFilter, setStatFilter] = useState("7 Days")
   const [uploadingPic, setUploadingPic] = useState(false)
 
@@ -1077,9 +1082,13 @@ export default function RiderHome() {
                   <p className="font-bold text-gray-900">Get Help</p>
                   <p className="text-sm text-gray-500 mt-1">Contact customer support</p>
                 </div>
-                <div onClick={() => toast.success("Ticket raised to admin dashboard successfully!")} className="bg-teal-50 border border-teal-100 rounded-[20px] p-4 shadow-sm cursor-pointer hover:bg-teal-100 transition">
+                <div onClick={() => navigate("/raise-ticket", { state: { from: "/rider-home", tab: "account", accountView: "help" } })} className="bg-teal-50 border border-teal-100 rounded-[20px] p-4 shadow-sm cursor-pointer hover:bg-teal-100 transition">
                   <p className="font-bold text-teal-700">Raise Ticket</p>
                   <p className="text-sm text-teal-600 mt-1">Direct to admin dashboard</p>
+                </div>
+                <div onClick={() => navigate("/my-tickets", { state: { from: "/rider-home", tab: "account", accountView: "help" } })} className="bg-white border border-gray-300 rounded-[20px] p-4 shadow-sm cursor-pointer hover:border-teal-200 transition">
+                  <p className="font-bold text-gray-900">My Tickets</p>
+                  <p className="text-sm text-gray-500 mt-1">View open and past tickets</p>
                 </div>
               </div>
             </div>

@@ -106,7 +106,8 @@ export default function RideConfirmed() {
 
   // Fetch ride if not in state
   useEffect(() => {
-    if (rideData && rideData.passengerLat && rideData.passengerLng) return
+    // DO NOT RETURN EARLY! Always fetch to ensure ride status is up to date vs DB.
+    // if (rideData && rideData.passengerLat && rideData.passengerLng) return
     setLoading(true)
     apiFetch(`/rides/${id}`)
       .then(res => {
@@ -124,6 +125,11 @@ export default function RideConfirmed() {
           fare: r.fare?.amount || 0,
           distanceKm: r.fare?.distanceKm || 0,
         }
+        if (["pickup_started", "ongoing", "reached_destination"].includes(r.status)) {
+          navigate(`/ride-pickup/${r._id}`, { replace: true, state: mapped })
+          return
+        }
+
         setRideData(mapped)
         setLoading(false)
       })
@@ -204,7 +210,7 @@ export default function RideConfirmed() {
     setLoading(true)
     setError("")
     try {
-      // Removing the non-existent /pickup-start backend call
+      await apiFetch(`/rides/${rideId}/pickup-start`, { method: "POST" })
       navigate(`/ride-pickup/${rideId}`, {
         replace: true,
         state: {

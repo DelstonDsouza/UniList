@@ -231,6 +231,12 @@ router.post("/:id/cancel", auth, wrap(async (req, res) => {
   res.json({ success: true })
 }))
 
+router.post("/:id/pickup-start", auth, wrap(async (req, res) => {
+  const ride = await rideService.startPickup(req.params.id, req.user._id)
+  io.to(`ride:${ride._id}`).emit("ride:pickup_started", { rideId: String(ride._id) })
+  res.json({ success: true, data: { ride } })
+}))
+
 router.post("/:id/arrive", auth, wrap(async (req, res) => {
   const ride = await rideService.arriveAtPickup(req.params.id, req.user._id)
   io.to(`ride:${ride._id}`).emit("ride:arrived", { rideId: String(ride._id) })
@@ -240,6 +246,12 @@ router.post("/:id/arrive", auth, wrap(async (req, res) => {
 router.post("/:id/start", auth, wrap(async (req, res) => {
   const ride = await rideService.startRide(req.params.id, req.user._id)
   io.to(`ride:${ride._id}`).emit("ride:started", { rideId: String(ride._id) })
+  res.json({ success: true, data: { ride } })
+}))
+
+router.post("/:id/reached", auth, wrap(async (req, res) => {
+  const ride = await rideService.reachDestination(req.params.id, req.user._id)
+  io.to(`ride:${ride._id}`).emit("ride:reached_destination", { rideId: String(ride._id) })
   res.json({ success: true, data: { ride } })
 }))
 

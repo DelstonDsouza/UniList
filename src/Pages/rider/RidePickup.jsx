@@ -324,7 +324,7 @@ export default function RidePickup() {
   useEffect(() => {
     if (rideData && rideData.rideId === id) {
       setBootstrapping(false)
-      return
+      // Do not return here! Always fetch latest from server to avoid stale state bugs on refresh
     }
     apiFetch(`/rides/${id}`)
       .then(res => {

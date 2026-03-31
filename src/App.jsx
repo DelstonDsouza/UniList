@@ -25,6 +25,8 @@ import PassengerPayment from "./pages/passenger/PassengerPayment"
 import RiderPayment from "./pages/rider/RiderPayment"
 import AdminLogin from "./pages/admin/AdminLogin"
 import AdminDashboard from "./pages/admin/AdminDashboard"
+import RaiseTicket from "./pages/shared/RaiseTicket"
+import MyTickets from "./pages/shared/MyTickets"
 
 // ✅ Defined OUTSIDE App — never recreated on re-render
 const AuthGate = ({ children }) => {
@@ -79,6 +81,10 @@ function App() {
 
         {/* ── Rider payment (after ride complete) ──────────────────────── */}
         <Route path="/rider-payment" element={<AuthGate><RiderPayment /></AuthGate>} />
+
+        {/* ── Help & Support ─────────────────────────────────────────── */}
+        <Route path="/raise-ticket" element={<AuthGate><RaiseTicket /></AuthGate>} />
+        <Route path="/my-tickets" element={<AuthGate><MyTickets /></AuthGate>} />
 
         {/* ── Admin ────────────────────────────────────────────────────── */}
         <Route path="/admin/login" element={<AdminLogin />} />

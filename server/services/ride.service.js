@@ -176,23 +176,45 @@ export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
   return ride
 }
 
-// ── START RIDE ────────────────────────────────────────────────────────────────
+export async function startPickup(rideId, riderId) {
+  const ride = await Ride.findOne({ _id: rideId, riderId })
+  if (!ride) throw httpError("Ride not found.", 404)
+  if (ride.status !== "locked") return ride
+  ride.status = "pickup_started"
+  await ride.save()
+  return ride
+}
+
 export async function arriveAtPickup(rideId, riderId) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
   if (!ride) throw httpError("Ride not found.", 404)
-  if (ride.status !== "locked") return ride // Already arrived?
-  ride.status = "pickup_started"
-  await ride.save()
+  if (ride.status === "locked") {
+    ride.status = "pickup_started"
+    await ride.save()
+  }
   return ride
 }
 
 export async function startRide(rideId, riderId) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
   if (!ride) throw httpError("Ride not found.", 404)
-  if (!["locked", "pickup_started"].includes(ride.status))
+  if (!["locked", "pickup_started", "ongoing"].includes(ride.status))
     throw httpError("Ride must be locked or pickup_started before starting.", 400)
   ride.status = "ongoing"
   ride.startedAt = new Date()
+  await ride.save()
+  clearRideRouteCache(rideId)
+  return ride
+}
+
+export async function reachDestination(rideId, riderId) {
+  const ride = await Ride.findOne({ _id: rideId, riderId })
+  if (!ride) throw httpError("Ride not found.", 404)
+  if (ride.status === "completed") return ride
+  if (!["ongoing", "reached_destination"].includes(ride.status))
+    throw httpError("Ride must be ongoing to reach destination.", 400)
+  ride.status = "reached_destination"
+  ride.reachedAt = new Date()
   await ride.save()
   clearRideRouteCache(rideId)
   return ride
@@ -202,7 +224,7 @@ export async function startRide(rideId, riderId) {
 export async function completeRide(rideId, riderId, paymentMethod) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
   if (!ride) throw httpError("Ride not found.", 404)
-  if (ride.status !== "ongoing") throw httpError("Ride must be ongoing to complete.", 400)
+  if (!["ongoing", "reached_destination"].includes(ride.status)) throw httpError("Ride must be ongoing to complete.", 400)
   ride.status = "completed"
   ride.completedAt = new Date()
   ride.payment.method = paymentMethod || "cash"

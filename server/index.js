@@ -13,6 +13,7 @@ import rideRoutes from "./routes/ride.routes.js"
 import riderRoutes from "./routes/rider.routes.js"
 import studentRoutes from "./routes/student.routes.js"
 import adminRoutes from "./routes/admin.routes.js"
+import complaintRoutes from "./routes/complaint.routes.js"
 
 // ── App + HTTP server ────────────────────────────────────────────────────────
 const app    = express()
@@ -79,6 +80,7 @@ app.use("/api/rider",riderRoutes)
 app.use("/api/students",studentRoutes)
 app.use("/api/admin", adminRoutes)
 app.use("/api/debug", adminRoutes)
+app.use("/api/complaints", complaintRoutes)
 
 // ── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {

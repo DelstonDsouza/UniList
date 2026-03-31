@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap, useMapEvents } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import toast from "react-hot-toast"
@@ -22,7 +22,7 @@ L.Icon.Default.mergeOptions({
 
 const ST_ALOYSIUS = [12.8737, 74.8462];
 
-const NOMINATIM = "https://nominatim.openstreetmap.org"
+const NOMINATIM = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
 
 function distKm(lat1, lng1, lat2, lng2) {
@@ -266,10 +266,17 @@ function BottomNav({ navTab, setNavTab }) {
 // ── Main Dashboard ────────────────────────────────────────────────────────
 export default function PassengerDashboard() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { viewState, nearbyRiders, loadingRiders, userLocation, requestRide, requestingRideId, fetchRiders, resetToDiscovery, hasActiveRide, activeRide } = useRide()
 
-  const [navTab, setNavTab] = useState("home")
-  const [accountView, setAccountView] = useState("menu")
+  const [navTab, setNavTab] = useState(location.state?.tab || "home")
+  const [accountView, setAccountView] = useState(location.state?.accountView || "menu")
+
+  // Keep history state in sync so refreshes maintain the current tab
+  useEffect(() => {
+    navigate(".", { replace: true, state: { from: location.state?.from, tab: navTab, accountView } })
+  }, [navTab, accountView, navigate, location.state?.from])
+
   const [statFilter, setStatFilter] = useState("7 Days")
   const [uploadingPic, setUploadingPic] = useState(false)
   const [passengerProfile, setPassengerProfile] = useState(null)
@@ -982,9 +989,13 @@ export default function PassengerDashboard() {
                   <p className="font-bold text-gray-900">Get Help</p>
                   <p className="text-sm text-gray-500 mt-1">Contact customer support</p>
                 </div>
-                <div onClick={() => toast.success("Ticket raised to admin dashboard successfully!")} className="bg-teal-50 border border-teal-100 rounded-[20px] p-4 shadow-sm cursor-pointer hover:bg-teal-100 transition">
+                <div onClick={() => navigate("/raise-ticket", { state: { from: "/dashboard", tab: "account", accountView: "help" } })} className="bg-teal-50 border border-teal-100 rounded-[20px] p-4 shadow-sm cursor-pointer hover:bg-teal-100 transition">
                   <p className="font-bold text-teal-700">Raise Ticket</p>
                   <p className="text-sm text-teal-600 mt-1">Direct to admin dashboard</p>
+                </div>
+                <div onClick={() => navigate("/my-tickets", { state: { from: "/dashboard", tab: "account", accountView: "help" } })} className="bg-white border border-gray-300 rounded-[20px] p-4 shadow-sm cursor-pointer hover:border-teal-200 transition">
+                  <p className="font-bold text-gray-900">My Tickets</p>
+                  <p className="text-sm text-gray-500 mt-1">View open and past tickets</p>
                 </div>
               </div>
             </div>

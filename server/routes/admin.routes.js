@@ -37,6 +37,41 @@ router.get("/rides", wrap(async (req, res) => {
   res.json({ rides })
 }))
 
+import { Complaint } from "../models/complaint.model.js"
+
+// GET /api/admin/complaints
+// Fetch all complaints for the admin dashboard
+router.get("/complaints", wrap(async (req, res) => {
+  const complaints = await Complaint.find({})
+    .populate("userId", "firstName lastName email phone")
+    .sort({ createdAt: -1 })
+  res.json({ complaints })
+}))
+// PUT /api/admin/complaints/:id
+// Admin responds to a complaint
+router.put("/complaints/:id", wrap(async (req, res) => {
+  const { adminResponse, status } = req.body
+  
+  if (!adminResponse) {
+    return res.status(400).json({ detail: "Response text is required" })
+  }
+
+  const updated = await Complaint.findByIdAndUpdate(
+    req.params.id,
+    { 
+      adminResponse,
+      status: status || "resolved" // default to resolved if not specified
+    },
+    { new: true }
+  ).populate("userId", "firstName lastName email phone")
+
+  if (!updated) {
+    return res.status(404).json({ detail: "Complaint not found" })
+  }
+
+  res.json({ detail: "Complaint updated successfully", complaint: updated })
+}))
+
 // GET /api/debug/users
 // Fallback debug users route that the frontend tries if admin/users fails
 router.get("/debug/users", wrap(async (req, res) => {
