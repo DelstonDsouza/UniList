@@ -140,7 +140,7 @@ export default function RiderHome() {
   const { riderActiveRide, setRiderRideActive, hasActiveRide } = useRide()
   const [tab, setTab] = useState(location.state?.tab || "home")
   const [accountView, setAccountView] = useState(location.state?.accountView || "menu")
-  
+
   // Keep history state in sync so refreshes maintain the current tab
   useEffect(() => {
     navigate(".", { replace: true, state: { from: location.state?.from, tab, accountView } })
@@ -878,53 +878,106 @@ export default function RiderHome() {
       {tab === "history" && (
         <div className="px-4 pt-5">
           <h2 className="text-lg font-bold text-gray-900 mb-4">Ride History</h2>
+
           {historyLoad && (
             <div className="flex justify-center py-16">
               <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
-          {historyErr && <div className="text-center py-16 text-red-500 text-sm">{historyErr}</div>}
+
+          {historyErr && (
+            <div className="text-center py-16 text-red-500 text-sm">
+              {historyErr}
+            </div>
+          )}
 
           {!historyLoad && history.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-gray-400 animate-fade-in">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4 shadow-inner">
                 <Clock className="w-10 h-10 text-gray-300" />
               </div>
-              <p className="font-bold text-[15px] text-gray-400">No completed rides yet.</p>
+              <p className="font-bold text-[15px] text-gray-400">
+                No completed rides yet.
+              </p>
             </div>
           )}
-          <div className="space-y-3">
+
+          <div className="space-y-4">
             {history.map((ride, i) => (
-              <div key={ride._id || i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="text-xs text-gray-400 font-medium">{formatDate(ride.createdAt || ride.date)}</p>
-                    <p className="text-xs text-gray-400">{ride.departureTime || ""}</p>
+              <div
+                key={ride._id || i}
+                className="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden"
+              >
+
+                {/* 🔥 HEADER (NEW STYLE) */}
+                <div className="bg-green-100 border-b border-gray-200 px-5 py-3 flex justify-between items-start">
+                  <div className="flex flex-col">
+                    {ride.passenger?.name && (
+                      <p className="text-[15px] font-bold text-gray-900 mb-1">
+                        {ride.passenger.name}
+                      </p>
+                    )}
+
+                    <p className="text-[11px] text-gray-600">
+                      {formatTime(ride.createdAt || ride.date)} ,{" "}
+                      {formatDate(ride.createdAt || ride.date)}
+                    </p>
                   </div>
-                  <StatusBadge status={ride.status} />
+
+                  {/* status text (no pill) */}
+                  <p className="text-[12px] font-bold text-green-700">
+                    Completed
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Pickup</p>
-                      <p className="text-sm font-medium text-gray-800">{ride.pickupAddress || ride.passenger?.pickupAddress || ride.locationName || "Location Saved"}</p>
+
+                {/* BODY */}
+                <div className="p-5 flex flex-col gap-4">
+
+                  <div className="relative pl-6 space-y-5 py-1">
+                    <div className="absolute left-[3px] top-[10px] bottom-[10px] w-[1.5px] bg-gray-100" />
+
+                    {/* Pickup */}
+                    <div className="relative">
+                      <div className="absolute -left-[24.5px] top-[4px] w-2.5 h-2.5 rounded-full bg-teal-500 border-2 border-white shadow-sm" />
+                      <p className="text-[9px] text-gray-400 uppercase font-bold tracking-widest mb-0.5">
+                        Pickup
+                      </p>
+                      <p className="text-[15px] font-bold text-gray-800 leading-snug">
+                        {ride.pickupAddress ||
+                          ride.passenger?.pickupAddress ||
+                          ride.locationName ||
+                          "Location Saved"}
+                      </p>
+                    </div>
+
+                    {/* Destination */}
+                    <div className="relative">
+                      <div className="absolute -left-[24.5px] top-[4px] w-2.5 h-2.5 rounded-full bg-gray-300 border-2 border-white shadow-sm" />
+                      <p className="text-[9px] text-gray-400 uppercase font-bold tracking-widest mb-0.5">
+                        Destination
+                      </p>
+                      <p className="text-[15px] font-bold text-gray-800 leading-snug">
+                        {ride.destination || collegeName}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 rounded-full bg-gray-400 mt-1.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Destination</p>
-                      <p className="text-sm font-medium text-gray-800">{ride.destination || collegeName}</p>
+
+                  {/* FOOTER */}
+                  {ride.fare != null && (
+                    <div className="pt-4 border-t border-gray-50 flex justify-between items-center">
+                      <p className="text-[14px] text-gray-400 font-bold uppercase tracking-wider">
+                        Earned
+                      </p>
+                      <p className="text-xl font-black text-teal-600 tracking-tight">
+                        ₹
+                        {typeof ride.fare === "object"
+                          ? ride.fare?.amount || 0
+                          : ride.fare || 0}
+                      </p>
                     </div>
-                  </div>
+                  )}
+
                 </div>
-                {ride.fare != null && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Fare Earned</span>
-                    <span className="text-sm font-bold text-teal-600">₹{typeof ride.fare === 'object' ? (ride.fare?.amount || 0) : (ride.fare || 0)}</span>
-                  </div>
-                )}
               </div>
             ))}
           </div>

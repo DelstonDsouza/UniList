@@ -265,6 +265,18 @@ function BottomNav({ navTab, setNavTab }) {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────
 export default function PassengerDashboard() {
+  const formatTime = (date) => {
+    if (!date) return "";
+    return new Date(date).toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const formatDate = (date) => {
+    if (!date) return "";
+    return new Date(date).toLocaleDateString("en-GB");
+  };
   const navigate = useNavigate()
   const location = useLocation()
   const { viewState, nearbyRiders, loadingRiders, userLocation, requestRide, requestingRideId, fetchRiders, resetToDiscovery, hasActiveRide, activeRide } = useRide()
@@ -473,11 +485,6 @@ export default function PassengerDashboard() {
   }, [requestRide, passengerLocation])
 
 
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return ""
-    return new Date(dateStr).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-  }
 
   const handlePicUpload = async (e) => {
     const file = e.target.files[0]
@@ -788,61 +795,125 @@ export default function PassengerDashboard() {
       {/* ────────────────── HISTORY VIEW ────────────────── */}
       {navTab === "history" && (
         <div className="flex-1 overflow-y-auto px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-32 bg-gray-50">
-          <h1 className="text-3xl font-bold mb-6 tracking-wide text-gray-900">Ride History</h1>
+
+          <h1 className="text-3xl font-bold mb-6 tracking-wide text-gray-900">
+            Ride History
+          </h1>
+
+          {/* Loading */}
           {historyLoad && (
             <div className="flex justify-center py-16">
               <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
+
+          {/* Empty */}
           {!historyLoad && history.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-gray-400 animate-fade-in">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4 shadow-inner">
                 <Clock className="w-10 h-10 text-gray-300" />
               </div>
-              <p className="font-bold text-[15px] text-gray-400">No completed rides yet.</p>
+              <p className="font-bold text-[15px] text-gray-400">
+                No completed rides yet.
+              </p>
             </div>
           )}
+
+          {/* List */}
           <div className="space-y-4">
             {history.map((ride, i) => (
-              <div key={ride._id || i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="text-xs text-gray-400 font-medium">{formatDate(ride.createdAt || ride.date)}</p>
-                    {ride.riderName && <p className="text-sm font-bold text-gray-900 mt-0.5">{ride.riderName}</p>}
+              <div
+                key={ride._id || i}
+                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-300"
+              >
+
+                {/* Header  */}
+                <div
+                  className={`px-4 py-3 -mx-4 -mt-4 mb-3 flex justify-between items-start
+  rounded-t-2xl border-b border-gray-300
+  ${ride.status === "completed"
+                      ? "bg-green-100"
+                      : "bg-red-100"
+                    }`}
+                >
+                  <div className="flex flex-col">
+                    {ride.riderName && (
+                      <p className="text-[15px] font-bold text-gray-900 mb-1 flex items-center">
+                        <User className="w-4 h-4 text-gray-600 mr-2" />
+                        {ride.riderName}
+                      </p>
+                    )}
+
+                    <p className="text-[11px] text-gray-600 flex items-center">
+                      <Clock className="w-4 h-4 text-gray-600 mr-2" />
+                      {formatTime(ride.createdAt || ride.date)} ,{" "}
+                      {formatDate(ride.createdAt || ride.date)}
+                    </p>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Completed</span>
-                    {ride.distanceKm != null && <span className="text-[10px] text-gray-400 font-medium">{ride.distanceKm} km</span>}
+
+                  <p
+                    className={`text-[12px] font-bold ${ride.status === "completed"
+                      ? "text-green-700"
+                      : "text-red-700"
+                      }`}
+                  >
+                    {ride.status === "completed" ? "Completed" : "Cancelled"}
+                  </p>
+                </div>
+
+                {/* ───── Body (Pickup / Destination) ───── */}
+                <div className="relative pl-6 space-y-5 py-1">
+
+                  {/* Vertical line */}
+                  <div className="absolute left-[3px] top-[10px] bottom-[15px] w-[1.5px] bg-gray-100" />
+
+                  {/* Pickup */}
+                  <div className="relative">
+                    <div className="absolute -left-[24.5px] top-[4px] w-2.5 h-2.5 rounded-full bg-teal-500 border-2 border-white shadow-sm" />
+                    <p className="text-[9px] text-gray-400 uppercase font-bold tracking-widest mb-0.5">
+                      Pickup
+                    </p>
+                    <p className="text-[16px] font-bold text-gray-800 leading-snug">
+                      {ride.pickupAddress ||
+                        ride.passenger?.pickupAddress ||
+                        "Location Saved"}
+                    </p>
+                  </div>
+
+                  {/* Destination */}
+                  <div className="relative">
+                    <div className="absolute -left-[24.5px] top-[4px] w-2.5 h-2.5 rounded-full bg-gray-300 border-2 border-white shadow-sm" />
+                    <p className="text-[9px] text-gray-400 uppercase font-bold tracking-widest mb-0.5">
+                      Destination
+                    </p>
+                    <p className="text-[16px] font-bold text-gray-800 leading-snug">
+                      {ride.destination ||
+                        "St Aloysius College, Mangalore"}
+                    </p>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Pickup</p>
-                      <p className="text-sm font-medium text-gray-800">{ride.pickupAddress || ride.passenger?.pickupAddress || "Location Saved"}</p>
-                    </div>
+                {/* ───── Footer ───── */}
+                {ride.status === "completed" && (
+                  <div className="pt-4 flex justify-between items-center">
+                    <p className="text-[15px] text-gray-400 font-bold uppercase tracking-wider">
+                      Paid
+                    </p>
+                    <p className="text-xl font-black text-teal-600 tracking-tight">
+                      ₹
+                      {typeof ride.fare === "object"
+                        ? ride.fare?.amount || 0
+                        : ride.fare || 0}
+                    </p>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 rounded-full bg-gray-400 mt-1.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Destination</p>
-                      <p className="text-sm font-medium text-gray-800">{ride.destination || "St Aloysius College"}</p>
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between">
-                  <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Fare Paid</span>
-                  <span className="text-base font-bold text-teal-600">₹{typeof ride.fare === 'object' ? (ride.fare?.amount || 0) : (ride.fare || 0)}</span>
-                </div>
               </div>
             ))}
           </div>
+
         </div>
       )}
-
       {/* ────────────────── ACCOUNT VIEW ────────────────── */}
       {navTab === "account" && (
         <div className="flex-1 overflow-y-auto px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-32 bg-gray-50">
