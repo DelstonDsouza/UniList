@@ -47,26 +47,26 @@ router.post("/:id/request", auth, wrap(async (req, res) => {
     rideId,
     {
       userId: req.user._id,
-      name:   name  || req.user.firstName,
-      phone:  phone || req.user.phone,
-      lat:    parseFloat(passengerLat),
-      lng:    parseFloat(passengerLng),
+      name: name || req.user.firstName,
+      phone: phone || req.user.phone,
+      lat: parseFloat(passengerLat),
+      lng: parseFloat(passengerLng),
     }
   )
 
   // Emit to rider instantly with correct pickup point
   io.to(`ride:${ride._id}`).emit("ride:locked", {
-    rideId:             String(ride._id),
-    passengerName:      ride.passenger.name,
-    passengerPhone:     ride.passenger.phone,
+    rideId: String(ride._id),
+    passengerName: ride.passenger.name,
+    passengerPhone: ride.passenger.phone,
     // Pickup point (may be nearest road point if passenger is >1km from route)
-    passengerLat:       ride._pickupLat,
-    passengerLng:       ride._pickupLng,
+    passengerLat: ride._pickupLat,
+    passengerLng: ride._pickupLng,
     needsToWalkToRoute: ride._needsToWalkToRoute,
     passengerActualLat: ride._passengerActualLat,
     passengerActualLng: ride._passengerActualLng,
-    fare:               ride.fare.amount,
-    distanceKm:         ride.fare.distanceKm,
+    fare: ride.fare.amount,
+    distanceKm: ride.fare.distanceKm,
   })
 
   // Remove from all passengers' lists
@@ -147,10 +147,10 @@ router.post("/", auth, wrap(async (req, res) => {
   }
 
   const ride = await Ride.create({
-    collegeId:    null,
-    riderId:      req.user._id,
-    riderName:    riderName  || req.user.firstName || "Rider",
-    riderPhone:   riderPhone || req.user.phone     || "",
+    collegeId: null,
+    riderId: req.user._id,
+    riderName: riderName || req.user.firstName || "Rider",
+    riderPhone: riderPhone || req.user.phone || "",
     departureTime: departureTime || null,
     currentLocation: {
       type: "Point",
@@ -184,14 +184,14 @@ router.get("/history", auth, wrap(async (req, res) => {
   const { passengerId, riderId } = req.query
 
   if (!passengerId && !riderId) {
-    return res.status(400).json({ 
-      success: false, 
-      error: { code: "MISSING_PARAMS", message: "passengerId or riderId required" } 
+    return res.status(400).json({
+      success: false,
+      error: { code: "MISSING_PARAMS", message: "passengerId or riderId required" }
     })
   }
 
   const query = passengerId ? { "passenger.userId": passengerId } : { riderId }
-  
+
   const rides = await Ride.find(query)
     .sort({ createdAt: -1 })
     .limit(50)
@@ -287,7 +287,7 @@ router.use((err, req, res, _next) => {
   res.status(status).json({
     success: false,
     error: {
-      code:    err.code    || "SERVER_ERROR",
+      code: err.code || "SERVER_ERROR",
       message: err.message || "Something went wrong",
     },
   })

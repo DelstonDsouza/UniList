@@ -32,7 +32,7 @@ export async function apiFetch(path, options = {}) {
         window.location.replace("/login")
       }
     }
-    const msg = (data && data.detail) || res.statusText || "Request failed"
+    const msg = (data && (data.detail || data.message || data.error?.message)) || res.statusText || "Request failed"
     throw new Error(msg)
   }
   return data

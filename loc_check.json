@@ -1,0 +1,32 @@
+{
+  "place_id": 229787525,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 1213222763,
+  "lat": "12.8750394",
+  "lon": "74.8479882",
+  "class": "highway",
+  "type": "residential",
+  "place_rank": 26,
+  "importance": 0.05339544441901271,
+  "addresstype": "road",
+  "name": "",
+  "display_name": "Mallikatte, Mangaluru, Mangaluru taluk, Dakshina Kannada, Karnataka, 575001, India",
+  "address": {
+    "suburb": "Mallikatte",
+    "city": "Mangaluru",
+    "county": "Mangaluru taluk",
+    "state_district": "Dakshina Kannada",
+    "state": "Karnataka",
+    "ISO3166-2-lvl4": "IN-KA",
+    "postcode": "575001",
+    "country": "India",
+    "country_code": "in"
+  },
+  "boundingbox": [
+    "12.8749993",
+    "12.8751958",
+    "74.8478536",
+    "74.8485129"
+  ]
+}

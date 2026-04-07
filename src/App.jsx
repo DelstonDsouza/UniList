@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { Toaster } from "react-hot-toast"
 
 import { RideProvider } from "./context/RideContext"
+import GlobalHelp from "./components/GlobalHelp"
 
 import Login from "./pages/auth/Login"
 import RegisterDetails from "./pages/auth/RegisterDetails"
@@ -48,6 +49,7 @@ function App() {
   return (
     <RideProvider>
       <Toaster position="top-center" reverseOrder={false} />
+      <GlobalHelp />
 
       <Routes>
 

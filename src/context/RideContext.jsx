@@ -38,6 +38,8 @@ export function RideProvider({ children }) {
 
   // ── Rider-side active ride (global) ──────────────────────────────────────
   const [riderActiveRide, setRiderActiveRide] = useState(null)
+  const [cancellationAlert, setCancellationAlert] = useState(null) // { title, message }
+
 
   const userLocationRef = useRef(null)
   const activeRideRef = useRef(null)
@@ -53,19 +55,44 @@ export function RideProvider({ children }) {
     (riderActiveRide && !["completed", "cancelled"].includes(riderActiveRide.status))
   )
   const activeRideRole = riderActiveRide ? "rider" : (activeRide ? "passenger" : null)
+  const roleRef = useRef(null)
+  useEffect(() => { roleRef.current = activeRideRole }, [activeRideRole])
 
   // ── GPS ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!navigator.geolocation) { setLocationError("Geolocation not supported"); return }
+
+    const updateLocation = (pos) => {
+      const loc = [pos.coords.latitude, pos.coords.longitude]
+      setUserLocation(loc)
+      userLocationRef.current = loc
+      setLocationError(null)
+    }
+
+    const MOCK_LOCATION = [12.8820, 74.8520] // Passenger location (Mangaluru)
+
+    const DEMO_MODE = true; // Set to true to bypass physical GPS instantly
+
+    if (DEMO_MODE) {
+      updateLocation({ coords: { latitude: MOCK_LOCATION[0], longitude: MOCK_LOCATION[1] } })
+      return
+    }
+
+    const handleLocationError = (err) => {
+      console.warn("Location error, using MOCK demo location:", err)
+      updateLocation({ coords: { latitude: MOCK_LOCATION[0], longitude: MOCK_LOCATION[1] } })
+    }
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc = [pos.coords.latitude, pos.coords.longitude]
-        setUserLocation(loc)
-        userLocationRef.current = loc
-        setLocationError(null)
+      updateLocation,
+      (err) => {
+        navigator.geolocation.getCurrentPosition(
+            updateLocation, 
+            handleLocationError, 
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
+        )
       },
-      () => setLocationError("Location access denied — enable GPS to find nearby riders"),
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     )
   }, [])
 
@@ -74,6 +101,7 @@ export function RideProvider({ children }) {
     if (status === "locked") return "confirmed"
     if (status === "pickup_started") return "waiting"
     if (status === "ongoing") return "ongoing"
+    if (status === "reached_destination") return "reached"
     if (status === "completed") return "completed"
     return null
   }
@@ -87,7 +115,7 @@ export function RideProvider({ children }) {
         // Passenger active ride
         const passengerData = await apiFetch("/rides/active").catch(() => null)
         const pRide = passengerData?.ride || passengerData?.data?.ride
-        if (pRide && ["locked", "pickup_started", "ongoing"].includes(pRide.status)) {
+        if (pRide && ["locked", "pickup_started", "ongoing", "reached_destination"].includes(pRide.status)) {
           setActiveRide(pRide)
           setFareInfo(pRide.fare || null)
           const vs = statusToView(pRide.status)
@@ -172,6 +200,29 @@ export function RideProvider({ children }) {
       setActiveRide(null); setFareInfo(null); setViewState("discovery")
       setRiderActiveRide(null)
     }
+
+    const handleCancelledByRider = ({ riderName }) => {
+      const wasPassenger = roleRef.current === "passenger"
+      handleRideCancelled()
+      if (wasPassenger) {
+        setCancellationAlert({
+          title: "Ride Cancelled",
+          message: `${riderName || "The rider"} has cancelled your ride. Please book another ride.`
+        })
+      }
+    }
+
+    const handleCancelledByPassenger = ({ passengerName }) => {
+      const wasRider = roleRef.current === "rider"
+      handleRideCancelled()
+      if (wasRider) {
+        setCancellationAlert({
+          title: "Ride Cancelled",
+          message: `${passengerName || "The passenger"} has cancelled your ride. Please book another ride.`
+        })
+      }
+    }
+
     const handlePickupStarted = () => setViewState("waiting")
     const handleRideStarted = () => setViewState("ongoing")
     const handleReachedDest = (data) => setReachedData(data)
@@ -188,6 +239,8 @@ export function RideProvider({ children }) {
     socket.on("ride:removed", handleRideRemoved)
     socket.on("ride:locked", handleRideRemoved)
     socket.on("ride:cancelled", handleRideCancelled)
+    socket.on("ride:cancelled_by_rider", handleCancelledByRider)
+    socket.on("ride:cancelled_by_passenger", handleCancelledByPassenger)
     socket.on("ride:pickup_started", handlePickupStarted)
     socket.on("ride:started", handleRideStarted)
     socket.on("ride:reached_destination", handleReachedDest)
@@ -200,6 +253,8 @@ export function RideProvider({ children }) {
       socket.off("ride:removed", handleRideRemoved)
       socket.off("ride:locked", handleRideRemoved)
       socket.off("ride:cancelled", handleRideCancelled)
+      socket.off("ride:cancelled_by_rider", handleCancelledByRider)
+      socket.off("ride:cancelled_by_passenger", handleCancelledByPassenger)
       socket.off("ride:pickup_started", handlePickupStarted)
       socket.off("ride:started", handleRideStarted)
       socket.off("ride:reached_destination", handleReachedDest)
@@ -273,6 +328,26 @@ export function RideProvider({ children }) {
     setRiderActiveRide(ride || null)
   }, [])
 
+  const cancelCurrentRide = async () => {
+    const id = riderActiveRide?._id || activeRide?._id
+    const role = riderActiveRide ? "rider" : "passenger"
+    if (!id) return
+
+    try {
+      if (role === "rider") {
+        await apiFetch(`/rides/${id}/cancel`, { method: "POST" })
+      } else {
+        await apiFetch(`/rides/${id}/cancel-passenger`, { method: "POST" })
+      }
+      // Reset local state (socket event will also fire)
+      setActiveRide(null); setFareInfo(null); setViewState("discovery")
+      setRiderActiveRide(null)
+    } catch (err) {
+      console.error("Cancel failed:", err)
+      throw err
+    }
+  }
+
   if (restoringRide) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="flex flex-col items-center gap-3 text-gray-400">
@@ -294,6 +369,8 @@ export function RideProvider({ children }) {
       fetchRiders,
       riderActiveRide, setRiderRideActive,
       hasActiveRide, activeRideRole,
+      cancelCurrentRide,
+      cancellationAlert, setCancellationAlert
     }}>
       {children}
     </RideContext.Provider>

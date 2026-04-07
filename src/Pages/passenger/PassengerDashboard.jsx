@@ -87,14 +87,16 @@ function RecenterMap({ mapBounds }) {
   return null
 }
 
-function Stars({ rating = 0 }) {
+function Stars({ rating = 0, count = 0 }) {
   const val = parseFloat(rating) || 0
   return (
     <span className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((s) => (
         <Star key={s} className={`w-3 h-3 ${s <= Math.round(val) ? "text-amber-400 fill-amber-400" : "text-gray-300"}`} />
       ))}
-      <span className="text-xs text-gray-500 ml-1 font-medium">{val > 0 ? val.toFixed(1) : "—"}</span>
+      <span className="text-xs text-gray-500 ml-1 font-medium italic">
+        {val > 0 ? `${val.toFixed(1)} (${count})` : "No ratings"}
+      </span>
     </span>
   )
 }
@@ -180,9 +182,8 @@ function RiderCard({ ride, passengerLocation, onRequest, requesting, passengerPr
 
         <div className="flex flex-col flex-1 min-w-0 pl-1">
           <p className="font-bold text-gray-900 text-lg truncate tracking-wide">{ride.riderName || "—"}</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <Stars rating={rating} />
-            <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+          <div className="flex flex-col gap-1 mt-0.5">
+            <Stars rating={rating} count={ride.ratingCount || 0} />
             <span className="text-xs text-gray-500 font-medium truncate">{ride.locationName || ride.pickupArea || "—"}</span>
           </div>
 
@@ -283,6 +284,11 @@ export default function PassengerDashboard() {
 
   const [navTab, setNavTab] = useState(location.state?.tab || "home")
   const [accountView, setAccountView] = useState(location.state?.accountView || "menu")
+
+  useEffect(() => {
+    if (location.state?.tab) setNavTab(location.state.tab)
+    if (location.state?.accountView) setAccountView(location.state.accountView)
+  }, [location.state])
 
   // Keep history state in sync so refreshes maintain the current tab
   useEffect(() => {
@@ -438,14 +444,41 @@ export default function PassengerDashboard() {
   }
 
   const useCurrentLocation = () => {
+    const DEMO_MODE = true;
+    const MOCK_LOCATION = [12.8820, 74.8520]; // Passenger location (Mangaluru)
+
+    if (DEMO_MODE) {
+      setShowDrop(false)
+      const loc = MOCK_LOCATION;
+      setPassengerLocation(loc); setMapCenter(loc); setMapBounds([loc])
+      isUserTyping.current = false;
+      reverseGeocode(loc[0], loc[1]).then(setLocationName)
+
+      return;
+    }
+
     setShowDrop(false)
     if (!navigator.geolocation) return toast.error("GPS disabled")
     setLocationName("Fetching location…")
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+
+    const onSuccess = async (pos) => {
       const loc = [pos.coords.latitude, pos.coords.longitude]
       setPassengerLocation(loc); setMapCenter(loc); setMapBounds([loc])
       isUserTyping.current = false; setLocationName(await reverseGeocode(loc[0], loc[1]))
-    }, () => toast.error("Failed to get GPS location"), { enableHighAccuracy: true })
+    }
+
+    const onError = () => {
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        () => {
+
+          onSuccess({ coords: { latitude: MOCK_LOCATION[0], longitude: MOCK_LOCATION[1] } })
+        },
+        { enableHighAccuracy: false, timeout: 3000, maximumAge: Infinity }
+      )
+    }
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, { enableHighAccuracy: true, timeout: 3000 })
   }
 
   const recenterToSelection = () => {

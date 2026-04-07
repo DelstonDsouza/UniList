@@ -40,26 +40,30 @@ const haversineM = ([lat1, lng1], [lat2, lng2]) => {
 }
 
 // \u2500 Map components \u2500
-function PinLayer({ position, color, emoji, label }) {
+function PinLayer({ position, type, label }) {
   const map = useMap()
   useEffect(() => {
     if (!position) return
-    const icon = L.divIcon({
-      className: "",
-      html: `<div style="background:${color};width:40px;height:40px;
-        border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-        border:3px solid white;box-shadow:0 3px 14px rgba(0,0,0,0.28);
-        display:flex;align-items:center;justify-content:center;">
-        <span style="transform:rotate(45deg);font-size:16px;line-height:1">${emoji}</span></div>`,
-      iconSize: [40, 40], iconAnchor: [20, 40],
-    })
+    let html = ""
+    let size = [22, 22]
+    let anchor = [11, 11]
+
+    if (type === "pickup" || type === "rider") {
+      html = `<div style="background-color: #0f766e; width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`
+      size = [22, 22]; anchor = [11, 11]
+    } else if (type === "destination") {
+      html = `<div style="background-color: #ef4444; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.3);"><div style="width: 8px; height: 8px; background: white; border-radius: 50%;"></div></div>`
+      size = [26, 26]; anchor = [13, 13]
+    }
+
+    const icon = L.divIcon({ className: "", html, iconSize: size, iconAnchor: anchor })
     const m = L.marker(position, { icon }).addTo(map)
     if (label) m.bindTooltip(label, {
-      permanent: true, direction: "top", offset: [0, -44],
+      permanent: true, direction: "top", offset: [0, -15],
       className: "leaflet-tooltip-custom"
     })
     return () => { try { m.remove() } catch { } }
-  }, [position?.[0], position?.[1], map]) // eslint-disable-line
+  }, [position?.[0], position?.[1], map, type])
   return null
 }
 
@@ -397,7 +401,10 @@ export default function RidePickup() {
       setRouteCoords(r.coords)
       if (phase === "toPassenger") {
         setEtaToPass(r.durationMin)
-        if (haversineM(riderPos, passengerPickup) <= 80) setArrived(true)
+        const isNear = riderPos && passengerPickup &&
+          riderPos[0] !== 0 && passengerPickup[0] !== 0 &&
+          haversineM(riderPos, passengerPickup) <= 80
+        if (isNear) setArrived(true)
       } else {
         setEtaToCol(r.durationMin)
         setDistToCol(r.distKm)
@@ -453,7 +460,7 @@ export default function RidePickup() {
 
   const mapCenter = riderPos ?? passengerPickup ?? COLLEGE
   const currentEta = phase === "toCollege" ? etaToCol : etaToPass
-  const routeColor = phase === "toCollege" ? "#16a34a" : "#2563EB"
+  const routeColor = "#0d9488"
   const destPin = phase === "toCollege" ? COLLEGE : passengerPickup
 
   if (bootstrapping) {
@@ -480,37 +487,23 @@ export default function RidePickup() {
               maxZoom={20}
             />
             {routeCoords.length > 1 && (
-              <Polyline positions={routeCoords} pathOptions={{ color: routeColor, weight: 5, opacity: 0.88 }} />
+              <Polyline positions={routeCoords} pathOptions={{ color: routeColor, weight: 5, opacity: 0.8 }} />
             )}
             {routeCoords.length > 1 && <FitRoute coords={routeCoords} />}
             {riderPos && (
               <>
-                <PinLayer position={riderPos} color="#2563EB" emoji="🏍️" label="You" />
+                <PinLayer position={riderPos} type="rider" label="You" />
                 <AccuracyRing position={riderPos} />
               </>
             )}
             {destPin && (
               <PinLayer
                 position={destPin}
-                color={phase === "toCollege" ? "#dc2626" : "#16a34a"}
-                emoji={phase === "toCollege" ? "🎓" : "👤"}
+                type={phase === "toCollege" ? "destination" : "pickup"}
                 label={phase === "toCollege" ? "College" : passengerName}
               />
             )}
           </MapContainer>
-
-          <div style={{ position: "absolute", top: "max(1rem, env(safe-area-inset-top))", right: 14, zIndex: 500, display: "flex", gap: 8 }}>
-            <button onClick={() => setShowHelp(true)} style={{
-              padding: "7px 12px", borderRadius: 20, border: "none",
-              background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            }} border="none">❓</button>
-            <button onClick={() => setShowReport(true)} style={{
-              padding: "7px 12px", borderRadius: 20, border: "none",
-              background: "#fef2f2", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#dc2626",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            }} border="none">🚨</button>
-          </div>
         </div>
 
         {/* DRAGGABLE BOTTOM SHEET */}
@@ -582,7 +575,7 @@ export default function RidePickup() {
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{
                   width: 48, height: 48, borderRadius: 12,
-                   background: "#2563EB",
+                  background: "#2563EB",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "white", fontSize: 20, fontWeight: 900,
                 }}>{(passengerName || "P")[0].toUpperCase()}</div>
@@ -601,27 +594,36 @@ export default function RidePickup() {
               </div>
             </div>
 
-             {phase === "toPassenger" && (
-               <div style={{
-                 background: "#f8fafc", border: "1.5px solid #e2e8f0",
-                 borderRadius: 20, padding: "20px 18px", marginTop: 4
-               }}>
-                  {!arrived ? (
-                    <button onClick={onArrivedClick} className="w-full py-4 rounded-2xl bg-gray-900 text-white font-black text-sm tracking-wide shadow-lg active:scale-[0.98] transition">
-                      I've Arrived at Pickup
-                    </button>
-                  ) : (
-                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                     <p style={{ textAlign: "center", fontSize: 13, fontWeight: 800, color: "#475569" }}>
-                       Enter passenger's OTP
-                     </p>
-                     <OtpBoxes value={otp} onChange={setOtp} disabled={submitting} />
-                     {otpError && <p style={{ textAlign: "center", color: "#dc2626", fontSize: 12, fontWeight: 700 }}>{otpError}</p>}
-                     {otp.length === 4 && (
-                       <SwipeButton label="Slide to Verify OTP and Start Ride" color="#16a34a" onSwipeComplete={handleVerify} disabled={submitting} />
-                     )}
-                   </div>
-                 )}
+            {phase === "toPassenger" && (
+              <div style={{
+                background: "#f8fafc", border: "1.5px solid #e2e8f0",
+                borderRadius: 20, padding: "20px 18px", marginTop: 4
+              }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+
+
+
+
+                  <div style={{
+                    opacity: arrived ? 1 : 0.45,
+                    filter: arrived ? "none" : "grayscale(0.5)",
+                    pointerEvents: arrived ? "auto" : "none",
+                    transition: "all 0.3s ease"
+                  }}>
+                    <p style={{ textAlign: "center", fontSize: 13, fontWeight: 800, color: "#475569", marginBottom: 12 }}>
+                      Enter passenger's OTP {!arrived && "(Locked)"}
+                    </p>
+                    <OtpBoxes value={otp} onChange={setOtp} disabled={submitting || !arrived} />
+                    {otpError && <p style={{ textAlign: "center", color: "#dc2626", fontSize: 12, fontWeight: 600, marginTop: 10 }}>{otpError}</p>}
+
+                    {otp.length === 4 && arrived && (
+                      <div style={{ marginTop: 20 }}>
+                        <SwipeButton label="Slide to Verify OTP and Start Ride" color="#16a34a" onSwipeComplete={handleVerify} disabled={submitting} />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 

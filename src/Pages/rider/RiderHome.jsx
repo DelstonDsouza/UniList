@@ -141,6 +141,11 @@ export default function RiderHome() {
   const [tab, setTab] = useState(location.state?.tab || "home")
   const [accountView, setAccountView] = useState(location.state?.accountView || "menu")
 
+  useEffect(() => {
+    if (location.state?.tab) setTab(location.state.tab)
+    if (location.state?.accountView) setAccountView(location.state.accountView)
+  }, [location.state])
+
   // Keep history state in sync so refreshes maintain the current tab
   useEffect(() => {
     navigate(".", { replace: true, state: { from: location.state?.from, tab, accountView } })
@@ -411,6 +416,18 @@ export default function RiderHome() {
 
   useEffect(() => {
     let cancelled = false
+
+    // DEMO MODE BYPASS
+    const DEMO_MODE = true;
+    const MOCK_LOCATION = [12.8800, 74.8500]; // Rider location (Mangaluru)
+
+    if (DEMO_MODE) {
+      if (cancelled) return;
+      applyPin(MOCK_LOCATION[0], MOCK_LOCATION[1]);
+      setLiveGps(MOCK_LOCATION);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setGpsStatus("error")
       setLocationName("GPS not supported — type your location")
@@ -433,10 +450,10 @@ export default function RiderHome() {
         navigator.geolocation.getCurrentPosition(
           onFirstSuccess,
           () => { if (!cancelled) { setGpsStatus("error"); setLocationName("") } },
-          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
         )
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     )
 
     try {
@@ -486,6 +503,17 @@ export default function RiderHome() {
   }
 
   const useCurrentLocation = () => {
+    const DEMO_MODE = true;
+    const MOCK_LOCATION = [12.8800, 74.8500]; // Rider location (Mangaluru)
+
+    if (DEMO_MODE) {
+      applyPin(MOCK_LOCATION[0], MOCK_LOCATION[1]);
+      setLiveGps(MOCK_LOCATION);
+      setShowDrop(false);
+
+      return;
+    }
+
     // If we already have a live GPS fix from the background watcher, use it instantly.
     if (liveGps) {
       applyPin(liveGps[0], liveGps[1])
@@ -498,12 +526,21 @@ export default function RiderHome() {
     setShowDrop(false)
 
     const onSuccess = (pos) => applyPin(pos.coords.latitude, pos.coords.longitude)
-    const onError = () => { setGpsStatus("error"); setLocationName("") }
+    const onError = () => {
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        () => {
+
+          onSuccess({ coords: { latitude: MOCK_LOCATION[0], longitude: MOCK_LOCATION[1] } });
+        },
+        { enableHighAccuracy: false, timeout: 3000, maximumAge: Infinity }
+      )
+    }
 
     // Use a shorter timeout and allow cached positions (maximumAge) for speed
     navigator.geolocation.getCurrentPosition(onSuccess, onError, {
       enableHighAccuracy: true,
-      timeout: 5000,
+      timeout: 3000,
       maximumAge: 10000
     })
   }
@@ -910,13 +947,17 @@ export default function RiderHome() {
               >
 
                 {/* 🔥 HEADER (NEW STYLE) */}
-                <div className="bg-green-100 border-b border-gray-200 px-5 py-3 flex justify-between items-start">
+                <div className={`${ride.status === "completed" ? "bg-green-100" : "bg-red-100"} border-b border-gray-200 px-5 py-3 flex justify-between items-start`}>
                   <div className="flex flex-col">
                     {ride.passenger?.name && (
                       <p className="text-[15px] font-bold text-gray-900 mb-1">
                         {ride.passenger.name}
                       </p>
-                    )}
+                    ) || (
+                        <p className="text-[15px] font-bold text-gray-400 mb-1 italic">
+                          No passenger
+                        </p>
+                      )}
 
                     <p className="text-[11px] text-gray-600">
                       {formatTime(ride.createdAt || ride.date)} ,{" "}
@@ -925,8 +966,8 @@ export default function RiderHome() {
                   </div>
 
                   {/* status text (no pill) */}
-                  <p className="text-[12px] font-bold text-green-700">
-                    Completed
+                  <p className={`text-[12px] font-bold ${ride.status === "completed" ? "text-green-700" : "text-red-700"}`}>
+                    {ride.status === "completed" ? "Completed" : "Cancelled"}
                   </p>
                 </div>
 
@@ -963,7 +1004,7 @@ export default function RiderHome() {
                   </div>
 
                   {/* FOOTER */}
-                  {ride.fare != null && (
+                  {ride.status === "completed" && ride.fare != null && (
                     <div className="pt-4 border-t border-gray-50 flex justify-between items-center">
                       <p className="text-[14px] text-gray-400 font-bold uppercase tracking-wider">
                         Earned

@@ -84,8 +84,10 @@ app.use("/api/complaints", complaintRoutes)
 
 // ── Global error handler ─────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
-  console.error("Unhandled error:", err?.stack || err)
-  res.status(500).json({ detail: "Server error" })
+  const status = err.status || 500
+  const message = err.message || "Server error"
+  console.error(`[Error ${status}]:`, err?.stack || err)
+  res.status(status).json({ detail: message })
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────

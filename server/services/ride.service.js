@@ -1,6 +1,7 @@
 // server/services/ride.service.js
 
 import Ride from "../models/Ride.js"
+import User from "../models/User.js"
 import {
   COLLEGE,
   calculateFare,
@@ -134,7 +135,9 @@ export async function getNearbyRides(passengerLat, passengerLng) {
   if (!isValidCoord(passengerLat, passengerLng))
     throw httpError("Invalid passenger coordinates.")
 
-  const allPending = await Ride.find({ status: "pending" }).lean()
+  const allPending = await Ride.find({ status: "pending" })
+    .populate("riderId", "ratingSum ratingCount")
+    .lean()
 
   const results = await Promise.all(
     allPending.map(async (ride) => {
@@ -143,7 +146,13 @@ export async function getNearbyRides(passengerLat, passengerLng) {
       const riderLat = ride.currentLocation?.coordinates?.[1]
       const riderLng = ride.currentLocation?.coordinates?.[0]
       const locationName = await reverseGeocode(riderLat, riderLng)
-      return { ...ride, locationName, ...pickupInfo }
+      return { 
+        ...ride, 
+        locationName, 
+        ...pickupInfo,
+        ratingSum: ride.riderId?.ratingSum || 0,
+        ratingCount: ride.riderId?.ratingCount || 0
+      }
     })
   )
 
@@ -195,11 +204,14 @@ export async function arriveAtPickup(rideId, riderId) {
   return ride
 }
 
-export async function startRide(rideId, riderId) {
+export async function startRide(rideId, riderId, otp) {
   const ride = await Ride.findOne({ _id: rideId, riderId })
   if (!ride) throw httpError("Ride not found.", 404)
   if (!["locked", "pickup_started", "ongoing"].includes(ride.status))
     throw httpError("Ride must be locked or pickup_started before starting.", 400)
+
+  if (!otp || ride.otp !== otp) throw httpError("Please re-check and enter the correct OTP.", 400)
+
   ride.status = "ongoing"
   ride.startedAt = new Date()
   await ride.save()
@@ -253,6 +265,31 @@ export async function getPassengerActiveRide(userId) {
     "passenger.userId": userId,
     status: { $in: ["locked", "pickup_started", "ongoing", "reached_destination"] },
   }).lean()
+}
+
+// ── REVIEW RIDE (PASSENGER RATING RIDER) ──────────────────────────────────────
+export async function reviewRide(rideId, userId, { rating, review }) {
+  const ride = await Ride.findById(rideId)
+  if (!ride) throw httpError("Ride not found.", 404)
+
+  // 1. Update the ride record
+  ride.riderReview = {
+    rating: Number(rating),
+    text: review || "",
+    givenAt: new Date(),
+  }
+  await ride.save()
+
+  // 2. Update the Rider's aggregate statistics in User model
+  // We use incrementing to ensure multiple reviews don't overwrite each other
+  await User.findByIdAndUpdate(ride.riderId, {
+    $inc: {
+      ratingSum: Number(rating),
+      ratingCount: 1
+    }
+  })
+
+  return ride
 }
 
 // ── GET RIDER HISTORY ─────────────────────────────────────────────────────────

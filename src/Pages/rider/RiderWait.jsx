@@ -18,19 +18,13 @@ L.Icon.Default.mergeOptions({
 })
 
 const pickupIcon = new L.DivIcon({
-  html: `<div style="background:#2563EB;color:white;border-radius:50% 50% 50% 0;
-    transform:rotate(-45deg);width:36px;height:36px;border:3px solid white;
-    box-shadow:0 3px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
-    <span style="transform:rotate(45deg);font-size:15px">📍</span></div>`,
-  className: "", iconSize: [36, 36], iconAnchor: [18, 36],
+  html: `<div style="background-color: #0f766e; width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`,
+  className: "", iconSize: [22, 22], iconAnchor: [11, 11]
 })
 
 const collegeIcon = new L.DivIcon({
-  html: `<div style="background:#0d9488;color:white;border-radius:50% 50% 50% 0;
-    transform:rotate(-45deg);width:36px;height:36px;border:3px solid white;
-    box-shadow:0 3px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;">
-    <span style="transform:rotate(45deg);font-size:15px">🎓</span></div>`,
-  className: "", iconSize: [36, 36], iconAnchor: [18, 36],
+  html: `<div style="background-color: #ef4444; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.3);"><div style="width: 8px; height: 8px; background: white; border-radius: 50%;"></div></div>`,
+  className: "", iconSize: [26, 26], iconAnchor: [13, 13]
 })
 
 function RoutePolyline({ from, to }) {
@@ -54,7 +48,7 @@ function RoutePolyline({ from, to }) {
   }, [from, to, map])
 
   if (coords.length < 2) return null
-  return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.85 }} />
+  return <Polyline positions={coords} pathOptions={{ color: "#0d9488", weight: 5, opacity: 0.8 }} />
 }
 
 // \u2500\u2500 Reverse geocode \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -193,11 +187,15 @@ export default function RiderWait() {
     })
     locationEmitRef.current = setInterval(() => {
       if (!socket.connected) return
-      navigator.geolocation.getCurrentPosition(
-        (pos) => socket.emit("rider:location", {
+      const emitLocation = (pos) => socket.emit("rider:location", {
           rideId: id, lat: pos.coords.latitude, lng: pos.coords.longitude,
-        }),
-        () => { },
+      })
+      navigator.geolocation.getCurrentPosition(
+        emitLocation,
+        () => {
+           // Fallback to low accuracy
+           navigator.geolocation.getCurrentPosition(emitLocation, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: Infinity })
+        },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 3000 }
       )
     }, 4000)
@@ -289,19 +287,19 @@ export default function RiderWait() {
       </div>
 
       {/* BOTTOM SHEET */}
-      <div className="absolute bottom-20 w-full px-4 pb-5 z-10">
-        <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-xl space-y-4">
+      <div className="absolute bottom-0 left-0 right-0 z-10">
+        <div className="bg-white rounded-t-[32px] p-6 border-t border-gray-100 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] space-y-5 pb-28">
 
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Your Trip</p>
           </div>
 
           {/* Route info \u2014 pickup, destination, departs all on left */}
-          <div className="flex gap-3 items-stretch">
-            <div className="flex flex-col items-center gap-1 py-1">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 flex-shrink-0" />
-              <div className="w-px flex-1 bg-gray-300" />
+          <div className="flex gap-3 items-start">
+            <div className="flex flex-col items-center gap-1 mt-2">
               <div className="w-2.5 h-2.5 rounded-full bg-teal-600 flex-shrink-0" />
+              <div className="w-px flex-1 bg-gray-300 min-h-[40px]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-red-600 flex-shrink-0" />
             </div>
             <div className="flex-1 space-y-3">
               <div>
@@ -313,9 +311,18 @@ export default function RiderWait() {
                 <p className="text-sm font-semibold text-gray-800 leading-snug">{destinationName}</p>
               </div>
               {departureTime && (
-                <div>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Departs</p>
-                  <p className="text-sm font-bold text-orange-500">{departureTime}</p>
+                <div className="flex gap-2 items-start ml-[-24px]">
+                  <div className="mt-1">
+                    <Clock className="w-4 h-4 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">
+                      Departs
+                    </p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {departureTime}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

@@ -234,7 +234,7 @@ export default function ActiveRidePanel() {
         replace: true,
         state: {
           rideId: activeRide._id,
-          distanceKm: data?.distanceKm ?? data?.distance ?? null,
+          distanceKm: data?.distanceKm ?? data?.distance ?? distToDest ?? activeRide?.fare?.distanceKm ?? null,
           fare: data?.fare ?? fareInfo?.amount ?? activeRide?.fare?.amount ?? null,
           riderName: activeRide.riderName,
         },
@@ -248,6 +248,17 @@ export default function ActiveRidePanel() {
       socket.off("ride:reached_destination", handleReached)
     }
   }, [activeRide?._id])
+
+  // Handle status update via polling or restoration
+  useEffect(() => {
+    if (activeRide?.status === "reached_destination") {
+      handleReached({
+        rideId: activeRide._id,
+        distanceKm: activeRide.fare?.distanceKm,
+        fare: activeRide.fare?.amount
+      })
+    }
+  }, [activeRide?.status])
 
   // ── Seed riderPos from last known location in ride doc ────────────────────
   useEffect(() => {
@@ -345,20 +356,6 @@ export default function ActiveRidePanel() {
               />
             )}
           </MapContainer>
-
-
-          <div style={{ position: "absolute", top: "max(1rem, env(safe-area-inset-top))", right: 14, zIndex: 500, display: "flex", gap: 8 }}>
-            <button onClick={() => setShowHelp(true)} style={{
-              padding: "7px 12px", borderRadius: 20, border: "none",
-              background: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#475569",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            }}>❓</button>
-            <button onClick={() => setShowReport(true)} style={{
-              padding: "7px 12px", borderRadius: 20, border: "none",
-              background: "#fef2f2", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#dc2626",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            }}>🚨</button>
-          </div>
         </div>
 
         {/* DRAGGABLE BOTTOM SHEET */}

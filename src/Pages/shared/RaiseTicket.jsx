@@ -20,14 +20,13 @@ export default function RaiseTicket() {
   const [loadingRides, setLoadingRides] = useState(false)
   const [profile, setProfile] = useState(null)
 
+  const isRiderSide = location.state?.from === "/rider-home"
+
   useEffect(() => {
     // Fetch profile to know userId
     apiFetch("/auth/me").then(data => {
       const p = data.user || data
       setProfile(p)
-      if (complaintType === "Past Ride Related") {
-        fetchHistory(p._id)
-      }
     }).catch(() => {})
   }, [])
 
@@ -35,13 +34,13 @@ export default function RaiseTicket() {
     if (complaintType === "Past Ride Related" && profile) {
       fetchHistory(profile._id)
     }
-  }, [complaintType, profile])
+  }, [complaintType, profile, isRiderSide])
 
   const fetchHistory = async (userId) => {
-    if (pastRides.length > 0) return
     setLoadingRides(true)
     try {
-      const res = await apiFetch(`/rides/history?passengerId=${userId}`)
+      const queryKey = isRiderSide ? "riderId" : "passengerId"
+      const res = await apiFetch(`/rides/history?${queryKey}=${userId}&days=7`)
       const arr = res?.data?.rides || res?.rides
       setPastRides(Array.isArray(arr) ? arr : [])
     } catch {
@@ -152,15 +151,31 @@ export default function RaiseTicket() {
                 ) : (
                   <select 
                     value={rideId} 
-                    onChange={e => setRideId(e.target.value)}
+                    onChange={e => {
+                      const id = e.target.value
+                      setRideId(id)
+                      const r = pastRides.find(x => x._id === id)
+                      if (r) {
+                        const otherName = isRiderSide ? r.passenger?.name : r.riderName
+                        setAgainst(otherName || "")
+                      }
+                    }}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition text-gray-900 font-medium text-[15px] appearance-none"
                   >
                     <option value="" disabled>Choose a recent ride...</option>
-                    {pastRides.map(r => (
-                      <option key={r._id} value={r._id}>
-                        {new Date(r.createdAt || r.date).toLocaleDateString()} - {r.riderName || "Ride"} ➔ {r.destination || "Saved Details"}
-                      </option>
-                    ))}
+                    {pastRides.length === 0 && <option disabled>No rides in the last 7 days</option>}
+                    {pastRides.map(r => {
+                      const dateObj = new Date(r.createdAt)
+                      const dateStr = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                      const timeStr = dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+                      const otherParty = isRiderSide ? `Passenger: ${r.passenger?.name || "User"}` : `Rider: ${r.riderName || "User"}`
+                      
+                      return (
+                        <option key={r._id} value={r._id}>
+                          {dateStr} | {timeStr} | {otherParty}
+                        </option>
+                      )
+                    })}
                   </select>
                 )}
               </motion.div>
