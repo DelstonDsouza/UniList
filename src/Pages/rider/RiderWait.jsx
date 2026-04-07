@@ -207,7 +207,7 @@ export default function RiderWait() {
 
 
   const pickupCoords = userLocation || [12.9141, 74.8560]
-  const collegeCoords = collegeLocation || [12.8721, 74.8453]
+  const collegeCoords = collegeLocation || [12.7911, 74.8621]
 
   return (
     <div className="fixed inset-0 bg-white overflow-hidden pb-20">

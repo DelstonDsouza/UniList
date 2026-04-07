@@ -218,7 +218,7 @@ router.post("/:id/cancel", auth, wrap(async (req, res) => {
     await User.findByIdAndUpdate(ride.passenger.userId, {
       $set: { activeRideId: null },
     })
-    io.to(`ride:${ride._id}`).emit("ride:cancelled", { rideId: String(ride._id) })
+    io.to(`ride:${ride._id}`).emit("ride:cancelled_by_rider", { riderName: ride.riderName || "The rider" })
   }
 
   // Mark as cancelled
@@ -244,7 +244,7 @@ router.post("/:id/arrive", auth, wrap(async (req, res) => {
 }))
 
 router.post("/:id/start", auth, wrap(async (req, res) => {
-  const ride = await rideService.startRide(req.params.id, req.user._id)
+  const ride = await rideService.startRide(req.params.id, req.user._id, req.body.otp)
   io.to(`ride:${ride._id}`).emit("ride:started", { rideId: String(ride._id) })
   res.json({ success: true, data: { ride } })
 }))

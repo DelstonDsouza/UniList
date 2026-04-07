@@ -38,20 +38,25 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-function PinMarker({ position, color, emoji, label }) {
+function PinMarker({ position, color, isDestination, label }) {
   const map = useMap()
   useEffect(() => {
     if (!position) return
-    const icon = L.divIcon({
-      className: "",
-      html: `<div style="background:${color};width:38px;height:38px;border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.3);
-        display:flex;align-items:center;justify-content:center;">
-        <span style="transform:rotate(45deg);font-size:15px">${emoji}</span></div>`,
-      iconSize: [38, 38], iconAnchor: [19, 38],
-    })
+    let html = ""
+    let size = [22, 22]
+    let anchor = [11, 11]
+
+    if (isDestination) {
+      html = `<div style="background-color: ${color}; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.3);"><div style="width: 8px; height: 8px; background: white; border-radius: 50%;"></div></div>`
+      size = [26, 26]
+      anchor = [13, 13]
+    } else {
+      html = `<div style="background-color: ${color}; width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`
+    }
+
+    const icon = L.divIcon({ className: "", html, iconSize: size, iconAnchor: anchor })
     const m = L.marker(position, { icon }).addTo(map)
-    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -40] })
+    if (label) m.bindTooltip(label, { permanent: true, direction: "top", offset: [0, -15] })
     return () => { try { m.remove() } catch { } }
   }, [position?.[0], position?.[1], map]) // eslint-disable-line
   return null
@@ -86,10 +91,10 @@ function RoutePolyline({ waypoints }) {
   }, [waypoints.map(w => w?.join()).join("|"), map]) // eslint-disable-line
 
   if (coords.length < 2) return null
-  return <Polyline positions={coords} pathOptions={{ color: "#2563EB", weight: 5, opacity: 0.9 }} />
+  return <Polyline positions={coords} pathOptions={{ color: "#0d9488", weight: 5, opacity: 0.9 }} />
 }
 
-const COLLEGE = [12.8698, 74.8425]
+const COLLEGE = [12.791147585453782, 74.86214146337976]
 
 export default function RideConfirmed() {
   const { id } = useParams()
@@ -252,9 +257,9 @@ export default function RideConfirmed() {
               maxZoom={20}
             />
             <RoutePolyline waypoints={waypoints} />
-            {userLocation && <PinMarker position={userLocation} color="#2563EB" emoji="🏍" label="You" />}
-            {passengerPickup && <PinMarker position={passengerPickup} color="#16a34a" emoji="👤" label={passengerName} />}
-            <PinMarker position={destination} color="#DC2626" emoji="🎓" label="St Aloysius" />
+            {userLocation && <PinMarker position={userLocation} color="#0d9488" label="You" />}
+            {passengerPickup && <PinMarker position={passengerPickup} color="#2563EB" label={passengerName} />}
+            <PinMarker position={destination} color="#DC2626" isDestination label="St Aloysius" />
           </MapContainer>
         )}
       </div>

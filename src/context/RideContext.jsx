@@ -69,7 +69,7 @@ export function RideProvider({ children }) {
       setLocationError(null)
     }
 
-    const MOCK_LOCATION = [12.8820, 74.8520] // Passenger location (Mangaluru)
+    const MOCK_LOCATION = [12.911001753406001, 74.89973306320724] // Passenger location (Vamanjoor)
 
     const DEMO_MODE = true; // Set to true to bypass physical GPS instantly
 
@@ -206,6 +206,7 @@ export function RideProvider({ children }) {
       handleRideCancelled()
       if (wasPassenger) {
         setCancellationAlert({
+          role: "passenger",
           title: "Ride Cancelled",
           message: `${riderName || "The rider"} has cancelled your ride. Please book another ride.`
         })
@@ -217,6 +218,7 @@ export function RideProvider({ children }) {
       handleRideCancelled()
       if (wasRider) {
         setCancellationAlert({
+          role: "rider",
           title: "Ride Cancelled",
           message: `${passengerName || "The passenger"} has cancelled your ride. Please book another ride.`
         })

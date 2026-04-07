@@ -20,7 +20,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-const ST_ALOYSIUS = [12.8737, 74.8462];
+const ST_ALOYSIUS = [12.791147585453782, 74.86214146337976];
 
 const NOMINATIM = "/nominatim"
 const NOM_HEADERS = { "Accept-Language": "en", "User-Agent": "RideMateApp/1.0" }
@@ -445,7 +445,7 @@ export default function PassengerDashboard() {
 
   const useCurrentLocation = () => {
     const DEMO_MODE = true;
-    const MOCK_LOCATION = [12.8820, 74.8520]; // Passenger location (Mangaluru)
+    const MOCK_LOCATION = [12.911001753406001, 74.89973306320724]; // Passenger location (Vamanjoor)
 
     if (DEMO_MODE) {
       setShowDrop(false)

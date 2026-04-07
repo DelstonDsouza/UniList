@@ -3,9 +3,9 @@
 
 // Fixed college destination (St Aloysius College, Mangalore)
 export const COLLEGE = {
-  lat: 12.872109642876621,
-  lng: 74.84534749009204,
-  label: "St Aloysius College, Mangalore",
+  lat: 12.791147585453782,
+  lng: 74.86214146337976,
+  label: "St Aloysius College (AIMIT), Beeri",
 }
 
 // Basic sanity check for coordinates

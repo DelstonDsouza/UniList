@@ -18,7 +18,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-const COLLEGE = [12.872109642876621, 74.84534749009204]
+const COLLEGE = [12.791147585453782, 74.86214146337976]
 const AVG_SPEED_KMH = 40
 const PEAK_START = 8
 const PEAK_END = 9
@@ -343,6 +343,7 @@ export default function RidePickup() {
           passengerPhone: r.passenger?.phone || "",
           passengerPickup: r.passenger?.location?.coordinates ? [r.passenger.location.coordinates[1], r.passenger.location.coordinates[0]] : null,
           fare: r.fare?.amount || 20,
+          distanceKm: r.fare?.distanceKm || 0,
           userLocation: riderPos
         }
         setRideData(mapped)
@@ -363,7 +364,8 @@ export default function RidePickup() {
     passengerName = "Passenger",
     passengerPhone = "",
     passengerPickup = null,
-    fare = 20
+    fare = 20,
+    distanceKm = 0
   } = rideData || {}
 
   useEffect(() => {
@@ -436,8 +438,8 @@ export default function RidePickup() {
     setReachLoading(true)
     try {
       const data = await apiFetch(`/rides/${id}/reached`, { method: "POST" })
-      const serverDistKm = data?.data?.distanceKm ?? distToCol
-      const serverFare = data?.data?.fare ?? fare
+      const serverDistKm = data?.data?.ride?.fare?.distanceKm ?? distanceKm
+      const serverFare = data?.data?.ride?.fare?.amount ?? fare
       navigate("/rider-payment", {
         replace: true,
         state: { rideId: id, distanceKm: serverDistKm, fare: serverFare, passengerName },

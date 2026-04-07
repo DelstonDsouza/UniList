@@ -13,7 +13,28 @@ export default function PassengerPayment() {
     const navigate = useNavigate()
     const { resetToDiscovery } = useRide()
 
-    const { rideId, distanceKm, fare, riderName } = state || {}
+    const [rideData, setRideData] = useState(state || {})
+    const { rideId, distanceKm, fare, riderName } = rideData
+
+    useEffect(() => {
+        if (!rideId) {
+            apiFetch("/rides/active").then(data => {
+                const r = data?.ride || data?.data?.ride
+                if (r) {
+                    setRideData({
+                        rideId: r._id,
+                        distanceKm: r.fare?.distanceKm || 0,
+                        fare: r.fare?.amount || 0,
+                        riderName: r.rider?.name || "Your Rider"
+                    })
+                } else {
+                    // If backend says there's no active ride anymore, safely kick the user home
+                    resetToDiscovery()
+                    navigate("/dashboard", { replace: true })
+                }
+            }).catch(() => {})
+        }
+    }, [rideId, navigate, resetToDiscovery])
 
     const [showRating, setShowRating] = useState(false)
     const [ratingVal, setRatingVal] = useState(0)

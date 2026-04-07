@@ -16,7 +16,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 })
 
-const COLLEGE = [12.872109642876621, 74.84534749009204]
+const COLLEGE = [12.791147585453782, 74.86214146337976]
 
 function PinLayer({ position, color, emoji, label }) {
   const map = useMap()

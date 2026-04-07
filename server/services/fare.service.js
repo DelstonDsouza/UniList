@@ -13,7 +13,8 @@ import { haversineKm } from "../utils/geo.js"
  */
 export function calculateFare(passengerLat, passengerLng, collegeLat, collegeLng) {
   const distanceKm = haversineKm(passengerLat, passengerLng, collegeLat, collegeLng)
-  const rounded = Math.max(0, parseFloat(distanceKm.toFixed(2)))
-  const amount = Math.max(20, Math.ceil(rounded) * 5)
+  const rounded = Math.max(0, parseFloat(distanceKm.toFixed(1)))
+  const rawFare = rounded * 5
+  const amount = rawFare < 20 ? 20 : Math.round(rawFare)
   return { distanceKm: rounded, amount }
 }

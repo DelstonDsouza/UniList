@@ -19,6 +19,14 @@ export default function GlobalHelp() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [cancelling, setCancelling] = useState(false)
 
+  // ── Auto-navigate to home immediately on cancellation ──
+  useEffect(() => {
+    if (cancellationAlert && cancellationAlert.role) {
+      // Push the user to the correct home page instantly underneath the alert
+      navigate(cancellationAlert.role === "rider" ? "/rider-home" : "/dashboard", { replace: true })
+    }
+  }, [cancellationAlert, navigate])
+
   // ── Handle Click Outside ──
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -228,7 +236,6 @@ export default function GlobalHelp() {
             <button
               onClick={() => {
                 setCancellationAlert(null)
-                navigate(activeRideRole === "rider" ? "/rider-home" : "/dashboard")
               }}
               style={{
                 width: "100%", padding: "16px", borderRadius: 16, border: "none",

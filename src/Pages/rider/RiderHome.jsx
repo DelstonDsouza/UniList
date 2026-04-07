@@ -401,7 +401,7 @@ export default function RiderHome() {
   const dropRef = useRef(null)
   const watchIdRef = useRef(null)
 
-  const collegeCoords = [12.872109642876621, 74.84534749009204]
+  const collegeCoords = [12.791147585453782, 74.86214146337976]
   const collegeName = "St Aloysius College, Mangalore"
 
   const applyPin = useCallback(async (lat, lng) => {
@@ -419,7 +419,7 @@ export default function RiderHome() {
 
     // DEMO MODE BYPASS
     const DEMO_MODE = true;
-    const MOCK_LOCATION = [12.8800, 74.8500]; // Rider location (Mangaluru)
+    const MOCK_LOCATION = [12.911001753406001, 74.89973306320724]; // Rider location (Vamanjoor)
 
     if (DEMO_MODE) {
       if (cancelled) return;
@@ -504,7 +504,7 @@ export default function RiderHome() {
 
   const useCurrentLocation = () => {
     const DEMO_MODE = true;
-    const MOCK_LOCATION = [12.8800, 74.8500]; // Rider location (Mangaluru)
+    const MOCK_LOCATION = [12.911001753406001, 74.89973306320724]; // Rider location (Vamanjoor)
 
     if (DEMO_MODE) {
       applyPin(MOCK_LOCATION[0], MOCK_LOCATION[1]);
