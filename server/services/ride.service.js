@@ -42,7 +42,7 @@ export function clearRideRouteCache(rideId) {
 }
 
 // ── Core matching logic ───────────────────────────────────────────────────────
-async function getPickupInfo(ride, passengerLat, passengerLng) {
+async function getPickupInfo(ride, passengerLat, passengerLng, destLat = COLLEGE.lat, destLng = COLLEGE.lng) {
   const riderLat = ride.currentLocation?.coordinates?.[1]
   const riderLng = ride.currentLocation?.coordinates?.[0]
   if (!riderLat || !riderLng) return null
@@ -61,6 +61,9 @@ async function getPickupInfo(ride, passengerLat, passengerLng) {
   // ── OSRM unavailable: fallback to straight-line 3km radius ───────────────
   if (!routePoints) {
     if (directDistToRider > 3) return null
+    // Strict Filtering: when OSRM is down, quickly calculate if destination heavily deviates
+    if (haversineKm(destLat, destLng, COLLEGE.lat, COLLEGE.lng) > 2) return null
+
     const { km, fare } = calculateFare(passengerLat, passengerLng)
     return {
       distanceKm: km, fareAmount: fare,
@@ -77,10 +80,24 @@ async function getPickupInfo(ride, passengerLat, passengerLng) {
   const passengerNearest = nearestPointOnRoute(routePoints, passengerLat, passengerLng)
   const distToRoute = passengerNearest.distanceKm
 
-  // Case 3: passenger > 2km from route → not eligible
+  // Case 3: passenger pickup > 2km from route → not eligible
   if (distToRoute > 2) return null
 
-  // ── Direction check using route index ─────────────────────────────────────
+  // ── Strict Destination Matching ───────────────────────────────────────────
+  // If passenger destination deviates from rider route, reject entirely
+  const destNearest = nearestPointOnRoute(routePoints, destLat, destLng)
+  if (destNearest.distanceKm > 2) {
+    console.log(`[pickup] DESTINATION FAIL — passenger dest is ${destNearest.distanceKm}km from route. Rejecting.`)
+    return null
+  }
+
+  // Direction: Destination must be ahead of passenger pickup
+  if (destNearest.routeIndex < passengerNearest.routeIndex) {
+    console.log(`[pickup] DIRECTION FAIL — passenger destination is BEHIND pickup. Rejecting.`)
+    return null
+  }
+
+  // ── Direction check for Rider using route index ───────────────────────────
   // The OSRM route runs: rider(index 0) → ... → college(index max)
   // Higher index = closer to college = AHEAD on the route.
   //
@@ -131,9 +148,9 @@ async function getPickupInfo(ride, passengerLat, passengerLng) {
 }
 
 // ── GET NEARBY RIDES ──────────────────────────────────────────────────────────
-export async function getNearbyRides(passengerLat, passengerLng) {
-  if (!isValidCoord(passengerLat, passengerLng))
-    throw httpError("Invalid passenger coordinates.")
+export async function getNearbyRides(passengerLat, passengerLng, destLat = COLLEGE.lat, destLng = COLLEGE.lng) {
+  if (!isValidCoord(passengerLat, passengerLng) || !isValidCoord(destLat, destLng))
+    throw httpError("Invalid coordinates.")
 
   const allPending = await Ride.find({ status: "pending" })
     .populate("riderId", "ratingSum ratingCount")
@@ -141,7 +158,7 @@ export async function getNearbyRides(passengerLat, passengerLng) {
 
   const results = await Promise.all(
     allPending.map(async (ride) => {
-      const pickupInfo = await getPickupInfo(ride, passengerLat, passengerLng)
+      const pickupInfo = await getPickupInfo(ride, passengerLat, passengerLng, destLat, destLng)
       if (!pickupInfo) return null
       const riderLat = ride.currentLocation?.coordinates?.[1]
       const riderLng = ride.currentLocation?.coordinates?.[0]
@@ -160,12 +177,15 @@ export async function getNearbyRides(passengerLat, passengerLng) {
 }
 
 // ── LOCK RIDE ─────────────────────────────────────────────────────────────────
-export async function lockRide(rideId, { userId, name, phone, lat, lng }) {
+export async function lockRide(rideId, { userId, name, phone, lat, lng, destLat, destLng }) {
   const ride = await Ride.findById(rideId)
   if (!ride) throw httpError("Ride not found.", 404)
   if (ride.status !== "pending") throw httpError("Ride no longer available.", 409)
 
-  const pickupInfo = await getPickupInfo(ride, lat, lng)
+  const dLat = destLat ? parseFloat(destLat) : COLLEGE.lat
+  const dLng = destLng ? parseFloat(destLng) : COLLEGE.lng
+
+  const pickupInfo = await getPickupInfo(ride, lat, lng, dLat, dLng)
   if (!pickupInfo) throw httpError("You are not on this rider's route.", 400)
 
   const { km, fare } = calculateFare(lat, lng)

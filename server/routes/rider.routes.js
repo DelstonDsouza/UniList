@@ -15,14 +15,16 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // ─────────────────────────────────────────────────────────────
 
 router.get("/nearby", auth, wrap(async (req, res) => {
-  const { lat, lng } = req.query
+  const { lat, lng, destLat, destLng } = req.query
   if (!lat || !lng) {
     return res.status(400).json({
       success: false,
       error: { code: "MISSING_COORDS", message: "lat and lng query params required" },
     })
   }
-  const rides = await rideService.getNearbyRides(parseFloat(lat), parseFloat(lng), null)
+  const dLat = destLat ? parseFloat(destLat) : undefined
+  const dLng = destLng ? parseFloat(destLng) : undefined
+  const rides = await rideService.getNearbyRides(parseFloat(lat), parseFloat(lng), dLat, dLng)
   res.json({ success: true, data: { rides } })
 }))
 
@@ -51,6 +53,8 @@ router.post("/:id/request", auth, wrap(async (req, res) => {
       phone: phone || req.user.phone,
       lat: parseFloat(passengerLat),
       lng: parseFloat(passengerLng),
+      destLat: req.body.destLat,
+      destLng: req.body.destLng,
     }
   )
 

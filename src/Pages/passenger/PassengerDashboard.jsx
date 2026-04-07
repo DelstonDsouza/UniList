@@ -1085,14 +1085,11 @@ export default function PassengerDashboard() {
               <h1 className="text-2xl font-bold mb-6 text-gray-900">Help & Support</h1>
 
               <div className="space-y-4">
-                <div className="bg-white border border-gray-300 rounded-[20px] p-4 shadow-sm cursor-pointer hover:border-teal-200 transition">
+                <div onClick={() => setAccountView("faqs")} className="bg-white border border-gray-300 rounded-[20px] p-4 shadow-sm cursor-pointer hover:border-teal-200 transition">
                   <p className="font-bold text-gray-900">FAQs</p>
                   <p className="text-sm text-gray-500 mt-1">Frequently asked questions</p>
                 </div>
-                <div className="bg-white border border-gray-300 rounded-[20px] p-4 shadow-sm cursor-pointer hover:border-teal-200 transition">
-                  <p className="font-bold text-gray-900">Get Help</p>
-                  <p className="text-sm text-gray-500 mt-1">Contact customer support</p>
-                </div>
+
                 <div onClick={() => navigate("/raise-ticket", { state: { from: "/dashboard", tab: "account", accountView: "help" } })} className="bg-teal-50 border border-teal-100 rounded-[20px] p-4 shadow-sm cursor-pointer hover:bg-teal-100 transition">
                   <p className="font-bold text-teal-700">Raise Ticket</p>
                   <p className="text-sm text-teal-600 mt-1">Direct to admin dashboard</p>
@@ -1101,6 +1098,34 @@ export default function PassengerDashboard() {
                   <p className="font-bold text-gray-900">My Tickets</p>
                   <p className="text-sm text-gray-500 mt-1">View open and past tickets</p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {accountView === "faqs" && (
+            <div className="animate-fade-in pb-10">
+              <button onClick={() => setAccountView("help")} className="mb-6 text-teal-600 font-bold flex items-center gap-1 text-[15px]">
+                <span className="text-xl leading-none -mt-0.5">‹</span> Back
+              </button>
+              <h1 className="text-2xl font-bold mb-6 text-gray-900">Frequently Asked<br />Questions</h1>
+
+              <div className="space-y-3">
+                {[
+                  { q: "How does the matching work?", a: "RideMate automatically pairs you with riders heading towards your destination. Our routing algorithm ensures efficient pickups directly along the rider's active path." },
+                  { q: "How is the fare calculated?", a: "Fares are transparently calculated at ₹5 per km from your pickup location to the destination, with a minimum base fare of ₹20." },
+                  { q: "Are the riders verified?", a: "Yes. All riders must submit their vehicle and license details during registration, ensuring a safe community for all students and staff." },
+                  { q: "What happens if a ride is cancelled?", a: "If either party cancels the ride, you will be notified instantly and the system will gracefully navigate you back to find another ride." },
+                ].map((faq, i) => (
+                  <details key={i} className="group bg-white border border-gray-300 rounded-[20px] shadow-sm overflow-hidden [&_summary::-webkit-details-marker]:hidden">
+                    <summary className="p-4 font-bold text-gray-900 cursor-pointer flex justify-between items-center outline-none list-none">
+                      <span className="pr-4 leading-tight">{faq.q}</span>
+                      <span className="text-teal-600 text-2xl font-light transition-transform duration-300 group-open:rotate-45">+</span>
+                    </summary>
+                    <div className="px-4 pb-4 text-[13.5px] text-gray-600 leading-relaxed border-t border-gray-100 pt-3">
+                      {faq.a}
+                    </div>
+                  </details>
+                ))}
               </div>
             </div>
           )}
