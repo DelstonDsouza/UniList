@@ -3,6 +3,8 @@ import "./App.css"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { Toaster } from "react-hot-toast"
+import { apiFetch } from "./services/api"
+import { socket } from "./services/socket"
 
 import { RideProvider } from "./context/RideContext"
 import GlobalHelp from "./components/GlobalHelp"
@@ -30,6 +32,57 @@ import RaiseTicket from "./pages/shared/RaiseTicket"
 import MyTickets from "./pages/shared/MyTickets"
 
 // ✅ Defined OUTSIDE App — never recreated on re-render
+const UserDisableOverlay = () => {
+  const [isDisabled, setIsDisabled] = useState(false)
+
+  useEffect(() => {
+    const checkProfile = async () => {
+      try {
+        const token = localStorage.getItem("token")
+        if (!token) return
+        const res = await apiFetch("/auth/me")
+        if (res?.user?.isDisabled) {
+          setIsDisabled(true)
+        }
+
+        // Bind the socket for this user to get realtime updates
+        if (res?.user?._id) {
+          socket.emit("join:user", res.user._id)
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+    checkProfile()
+
+    const handleDisabledState = ({ isDisabled }) => {
+      setIsDisabled(isDisabled)
+    }
+
+    socket.on("user:disabled_state", handleDisabledState)
+
+    return () => {
+      socket.off("user:disabled_state", handleDisabledState)
+    }
+  }, [])
+
+  if (!isDisabled) return null
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+      <div className="bg-white rounded-[24px] p-8 shadow-2xl max-w-sm w-full text-center border border-red-100">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span className="text-red-500 text-3xl font-bold">!</span>
+        </div>
+        <h2 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Account Disabled</h2>
+        <p className="text-[15px] font-medium text-gray-600 leading-relaxed">
+          Your account has been disabled. Please contact the admin for further queries.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 const AuthGate = ({ children }) => {
   const [ready, setReady] = useState(false)
   const [authed, setAuthed] = useState(false)
@@ -49,6 +102,7 @@ function App() {
   return (
     <RideProvider>
       <Toaster position="top-center" reverseOrder={false} />
+      <UserDisableOverlay />
       <GlobalHelp />
 
       <Routes>

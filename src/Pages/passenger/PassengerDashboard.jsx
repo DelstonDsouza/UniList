@@ -445,7 +445,7 @@ export default function PassengerDashboard() {
 
   const useCurrentLocation = () => {
     const DEMO_MODE = true;
-    const MOCK_LOCATION = [12.911001753406001, 74.89973306320724]; // Passenger location (Vamanjoor)
+    const MOCK_LOCATION = [12.872341594142988, 74.84599247518277]; // Demo Location
 
     if (DEMO_MODE) {
       setShowDrop(false)

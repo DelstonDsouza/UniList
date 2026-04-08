@@ -21,6 +21,7 @@ const UserSchema = new mongoose.Schema(
     isRider: { type: Boolean, default: false },
     licenseNo: { type: String, default: "", trim: true },
     vehicleNo: { type: String, default: "", trim: true },
+    isDisabled: { type: Boolean, default: false },
 
     // Active ride tracking
     activeRideId: {

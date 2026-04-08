@@ -419,7 +419,7 @@ export default function RiderHome() {
 
     // DEMO MODE BYPASS
     const DEMO_MODE = true;
-    const MOCK_LOCATION = [12.911001753406001, 74.89973306320724]; // Rider location (Vamanjoor)
+    const MOCK_LOCATION = [12.872341594142988, 74.84599247518277]; // Demo Location
 
     if (DEMO_MODE) {
       if (cancelled) return;
@@ -504,7 +504,7 @@ export default function RiderHome() {
 
   const useCurrentLocation = () => {
     const DEMO_MODE = true;
-    const MOCK_LOCATION = [12.911001753406001, 74.89973306320724]; // Rider location (Vamanjoor)
+    const MOCK_LOCATION = [12.872341594142988, 74.84599247518277]; // Demo Location
 
     if (DEMO_MODE) {
       applyPin(MOCK_LOCATION[0], MOCK_LOCATION[1]);

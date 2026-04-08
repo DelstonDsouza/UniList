@@ -49,6 +49,11 @@ io.on("connection", (socket) => {
     console.log(`👀 Passenger watching for rides: ${socket.id}`)
   })
 
+  socket.on("join:user", (userId) => {
+    socket.join(`user:${userId}`)
+    console.log(`👤 User joined room user:${userId}`)
+  })
+
   socket.on("disconnect", () => {
     console.log("❌ Socket disconnected:", socket.id)
   })

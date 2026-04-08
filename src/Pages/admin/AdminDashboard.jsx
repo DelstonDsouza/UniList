@@ -27,6 +27,30 @@ export default function AdminDashboard() {
     navigate("/admin/login")
   }
 
+  const handleDisableUser = async (userId, currentDisabled) => {
+    try {
+      const token = getToken()
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/disable`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ isDisabled: !currentDisabled })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error?.message || data.error || "Failed to update user.")
+      }
+
+      toast.success(data.user.isDisabled ? "User disabled" : "User enabled")
+      loadData()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
   const loadData = async () => {
     setLoading(true)
     try {
@@ -67,7 +91,7 @@ export default function AdminDashboard() {
   }, [])
 
   const tabs = [
-    "Overview", "View Users", "Reports", "Ride Activity", "Change Fuel Cost", "Moderation"
+    "Overview", "View Users", "Reports", "Ride Activity"
   ]
 
   const filteredUsers = users.filter(u => {
@@ -146,7 +170,7 @@ export default function AdminDashboard() {
                   <h2 className="text-[32px] md:text-[40px] font-bold text-gray-900 tracking-tight leading-none mb-4 uppercase">
                     RideMate <span className="text-[#a10d18] font-black">Admin Dashboard</span>
                   </h2>
-                  <p className="text-gray-500 font-medium text-[15px] lg:text-[17px]">Monitor riders, passengers, ride activity, reports, moderation, and pricing in one place.</p>
+                  <p className="text-gray-500 font-medium text-[15px] lg:text-[17px]">Monitor riders, passengers, ride activity, and reports in one place.</p>
                   <button
                     onClick={loadData}
                     disabled={loading}
@@ -213,13 +237,22 @@ export default function AdminDashboard() {
                               <span className="uppercase text-[11px] font-bold tracking-widest text-gray-400">{u.universityId}</span>
                             </div>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 items-center">
                             <span className={`text-[11px] px-3 py-1.5 rounded-xl uppercase tracking-wider font-extrabold ${u.isRider ? "bg-blue-100 text-blue-700" : "bg-gray-200 text-gray-600"}`}>
                               {u.isRider ? "Rider" : "Passenger"}
                             </span>
-                            <span className={`text-[11px] px-3 py-1.5 rounded-xl uppercase tracking-wider font-extrabold ${u.verified ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                              {u.verified ? "Verified" : "Unverified"}
+                            <span className={`text-[11px] px-3 py-1.5 rounded-xl uppercase tracking-wider font-extrabold ${u.isDisabled ? "bg-red-600 text-white" : "bg-emerald-100 text-emerald-700"}`}>
+                              {u.isDisabled ? "Disabled" : "Active"}
                             </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDisableUser(u.uid, u.isDisabled);
+                              }}
+                              className={`ml-2 px-3 py-1.5 rounded-xl text-[11px] font-extrabold uppercase tracking-wider transition ${u.isDisabled ? "bg-gray-800 text-white hover:bg-black" : "bg-red-100 text-red-700 hover:bg-red-200"}`}
+                            >
+                              {u.isDisabled ? "Enable" : "Disable"}
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -241,17 +274,7 @@ export default function AdminDashboard() {
               <FilterableList title="Ride Activity Monitor" filters={["All", "Pending", "Accepted", "Ongoing", "Completed"]} emptyMsg="No rides found for this status." items={rides} type="rides" />
             )}
 
-            {activeTab === "Change Fuel Cost" && (
-              <div className="bg-white border border-gray-100 rounded-[24px] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] text-center py-24">
-                <p className="text-gray-500 font-medium text-[17px]">Pricing & Fuel Cost modification coming soon.</p>
-              </div>
-            )}
 
-            {activeTab === "Moderation" && (
-              <div className="bg-white border border-gray-100 rounded-[24px] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] text-center py-24">
-                <p className="text-gray-500 font-medium text-[17px]">Moderation tools coming soon.</p>
-              </div>
-            )}
 
           </motion.div>
         </AnimatePresence>

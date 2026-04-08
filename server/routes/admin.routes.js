@@ -1,5 +1,8 @@
 import { Router } from "express"
+import mongoose from "mongoose"
 import User from "../models/User.js"
+import auth from "../middleware/auth.js"
+import { io } from "../index.js"
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
@@ -22,7 +25,8 @@ router.get("/users", wrap(async (req, res) => {
     verified: true, // Mocking verified status since there's no DB fields for it yet
     isRider: user.isRider,
     role: user.role,
-    collegeIdPhotoUrl: user.profilePic || null
+    collegeIdPhotoUrl: user.profilePic || null,
+    isDisabled: user.isDisabled || false
   }))
 
   res.json({ users: formattedUsers })
@@ -77,6 +81,50 @@ router.put("/complaints/:id", wrap(async (req, res) => {
 router.get("/debug/users", wrap(async (req, res) => {
   const users = await User.find({}).sort({ createdAt: -1 })
   res.json({ users })
+}))
+
+// PUT /api/admin/users/:id/disable
+// Admin disables or enables a user account
+router.put("/users/:id/disable", auth, wrap(async (req, res) => {
+  const { isDisabled } = req.body
+  const userId = req.params.id
+
+  // If trying to disable, check if user is in an active ride
+  if (isDisabled) {
+    let query = mongoose.Types.ObjectId.isValid(userId) ? { _id: userId } : { firebaseUid: userId }
+    const targetUser = await User.findOne(query)
+    if (!targetUser) return res.status(404).json({ error: { message: "User not found" } })
+
+    const activeRide = await Ride.findOne({
+      $or: [
+        { riderId: targetUser._id, status: { $in: ["pending", "locked", "pickup_started", "ongoing"] } },
+        { "passenger.userId": targetUser._id, status: { $in: ["locked", "pickup_started", "ongoing"] } }
+      ]
+    })
+    
+    if (activeRide) {
+      return res.status(400).json({ error: { message: "User cannot be disabled during an active ride." } })
+    }
+  }
+
+  // Update user status
+  let query = mongoose.Types.ObjectId.isValid(userId) ? { _id: userId } : { firebaseUid: userId }
+  
+  const user = await User.findOneAndUpdate(
+    query,
+    { $set: { isDisabled } },
+    { new: true }
+  )
+
+  if (!user) {
+    return res.status(404).json({ error: { message: "User not found" } })
+  }
+
+  res.json({ success: true, user })
+  
+  // Real-time notification to the specific user room
+  io.to(`user:${user._id}`).emit("user:disabled_state", { isDisabled: user.isDisabled })
+  io.to(`user:${user.firebaseUid}`).emit("user:disabled_state", { isDisabled: user.isDisabled })
 }))
 
 export default router

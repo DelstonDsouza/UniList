@@ -86,6 +86,7 @@ router.post("/firebase", async (req, res) => {
       profileComplete,
       roleSelected,
       role:            user.isRider ? "rider" : "passenger",
+      isDisabled:      user.isDisabled || false,
     })
 
   } catch (err) {
@@ -201,6 +202,7 @@ router.get("/me", async (req, res) => {
         totalEarnings,
         totalSpent,
         totalRides,
+        isDisabled:   user.isDisabled || false,
       }
     })
   } catch {
