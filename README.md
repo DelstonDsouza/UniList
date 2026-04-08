@@ -92,15 +92,6 @@ npm run dev
 
 ---
 
-## 💡 Demo Mode & Presentation Tips
-
-To ensure a smooth demonstration regardless of location or GPS hardware:
-- **Demo Location**: The app is currently configured with a hardcoded demo location at `12.872341, 74.845992`.
-- **Admin Credentials**: Use `admin@college.com` / `admin123` to access the Admin Dashboard.
-- **Mock GPS**: If physical GPS is unavailable, the system automatically triggers a high-fidelity "Demo Mode" to inject realistic coordinates for both riders and passengers.
-
----
-
 ## 📂 Project Structure
 
 ```
